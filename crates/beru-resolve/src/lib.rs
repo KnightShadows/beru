@@ -10,7 +10,7 @@ use pubgrub::SemanticVersion;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// A PubGrub dependency provider for Beru packages.
 pub struct BeruProvider<'a> {
@@ -82,8 +82,14 @@ impl<'a> BeruProvider<'a> {
             match dep {
                 Dependency::Git(g) => {
                     if let Some(tag) = &g.tag {
-                        if let Ok(v) = parse_version(tag) {
-                            return Ok(vec![v]);
+                        match parse_version(tag) {
+                            Ok(v) => return Ok(vec![v]),
+                            Err(e) => {
+                                warn!(
+                                    "Failed to parse git tag '{}' as version for {}: {}. Falling back to 0.0.0",
+                                    tag, package, e
+                                );
+                            }
                         }
                     }
                     return Ok(vec![SemanticVersion::new(0, 0, 0)]);
@@ -102,10 +108,18 @@ impl<'a> BeruProvider<'a> {
                 for entry in entries.flatten() {
                     if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
                         let version_str = entry.file_name().to_string_lossy().into_owned();
-                        if let Ok(v) = parse_version(&version_str) {
-                            let recipe_path = entry.path().join("recipe.toml");
-                            if recipe_path.exists() {
-                                versions.push(v);
+                        match parse_version(&version_str) {
+                            Ok(v) => {
+                                let recipe_path = entry.path().join("recipe.toml");
+                                if recipe_path.exists() {
+                                    versions.push(v);
+                                }
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "Skipping index entry '{}' for {}: {}",
+                                    version_str, package, e
+                                );
                             }
                         }
                     }
@@ -127,8 +141,14 @@ impl<'a> BeruProvider<'a> {
         )?;
 
         if let Some((r, _)) = recipe {
-            if let Ok(v) = parse_version(&r.package.version) {
-                return Ok(vec![v]);
+            match parse_version(&r.package.version) {
+                Ok(v) => return Ok(vec![v]),
+                Err(e) => {
+                    warn!(
+                        "Failed to parse recipe version '{}' for {}: {}",
+                        r.package.version, package, e
+                    );
+                }
             }
         }
 
@@ -221,8 +241,8 @@ impl<'a> DependencyProvider for BeruProvider<'a> {
         }
 
         if let Some(r) = recipe {
-            for dep_name in r.dependencies.keys() {
-                let range = pubgrub::Range::full();
+            for (dep_name, dep_value) in &r.dependencies {
+                let range = parse_recipe_dep_range(dep_name, dep_value);
                 deps_map.insert(dep_name.clone(), range);
             }
         }
@@ -233,14 +253,323 @@ impl<'a> DependencyProvider for BeruProvider<'a> {
     }
 }
 
-fn parse_version(s: &str) -> anyhow::Result<SemanticVersion> {
+/// Parse a version string into its (major, minor, patch) components.
+fn parse_version_parts(s: &str) -> anyhow::Result<(u32, u32, u32)> {
     let clean = s.trim_start_matches('v');
     let parts: Vec<&str> = clean.split('.').collect();
-    let major = parts.first().unwrap_or(&"0").parse().unwrap_or(0);
-    let minor = parts.get(1).unwrap_or(&"0").parse().unwrap_or(0);
-    let patch = parts.get(2).unwrap_or(&"0").parse().unwrap_or(0);
+    let major: u32 = parts
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("missing major version in '{}'", s))?
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid major version in '{}'", s))?;
+    let minor: u32 = parts
+        .get(1)
+        .unwrap_or(&"0")
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid minor version in '{}'", s))?;
+    let patch: u32 = parts
+        .get(2)
+        .unwrap_or(&"0")
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid patch version in '{}'", s))?;
+    Ok((major, minor, patch))
+}
+
+fn parse_version(s: &str) -> anyhow::Result<SemanticVersion> {
+    let (major, minor, patch) = parse_version_parts(s)?;
     Ok(SemanticVersion::new(major, minor, patch))
+}
+
+/// Convert a version requirement string into a `pubgrub::Range<SemanticVersion>`.
+///
+/// Beru defaults to **exact pin** semantics:
+/// - `"11.0.2"` or `"=11.0.2"` → `Range::singleton(11.0.2)` (exact pin)
+/// - `"*"` → `Range::full()` (any version)
+/// - `"^1.2.3"` → caret range: `>=1.2.3, <2.0.0`
+/// - `"^0.2.3"` → caret range: `>=0.2.3, <0.3.0` (0.x special case)
+/// - `"^0.0.3"` → caret range: `>=0.0.3, <0.0.4` (0.0.x special case)
+/// - `"~1.2.3"` → tilde range: `>=1.2.3, <1.3.0`
+/// - `">=1.2.3"` → `Range::higher_than(1.2.3)`
+/// - `">=1.0.0, <2.0.0"` → `Range::between(1.0.0, 2.0.0)`
+pub fn version_req_to_range(req: &str) -> pubgrub::Range<SemanticVersion> {
+    let req = req.trim();
+
+    // Wildcard: any version
+    if req == "*" || req.is_empty() {
+        return pubgrub::Range::full();
+    }
+
+    // Compound: ">=X.Y.Z, <A.B.C"
+    if req.contains(',') {
+        let parts: Vec<&str> = req.split(',').map(|s| s.trim()).collect();
+        let mut range = pubgrub::Range::full();
+        for part in parts {
+            range = range.intersection(&version_req_to_range(part));
+        }
+        return range;
+    }
+
+    // Exact pin with "=" prefix
+    if let Some(rest) = req.strip_prefix("=") {
+        let rest = rest.trim();
+        if let Ok(v) = parse_version(rest) {
+            return pubgrub::Range::singleton(v);
+        }
+        warn!(
+            "Failed to parse version in '{}', falling back to full range",
+            req
+        );
+        return pubgrub::Range::full();
+    }
+
+    // Caret range: "^X.Y.Z"
+    if let Some(rest) = req.strip_prefix('^') {
+        let rest = rest.trim();
+        if let Ok((major, minor, patch)) = parse_version_parts(rest) {
+            let lower = SemanticVersion::new(major, minor, patch);
+            let upper = caret_upper_bound(major, minor, patch);
+            return pubgrub::Range::between(lower, upper);
+        }
+        warn!(
+            "Failed to parse version in '{}', falling back to full range",
+            req
+        );
+        return pubgrub::Range::full();
+    }
+
+    // Tilde range: "~X.Y.Z" → >=X.Y.Z, <X.(Y+1).0
+    if let Some(rest) = req.strip_prefix('~') {
+        let rest = rest.trim();
+        if let Ok((major, minor, patch)) = parse_version_parts(rest) {
+            let lower = SemanticVersion::new(major, minor, patch);
+            let upper = SemanticVersion::new(major, minor + 1, 0);
+            return pubgrub::Range::between(lower, upper);
+        }
+        warn!(
+            "Failed to parse version in '{}', falling back to full range",
+            req
+        );
+        return pubgrub::Range::full();
+    }
+
+    // Greater-than-or-equal: ">=X.Y.Z"
+    if let Some(rest) = req.strip_prefix(">=") {
+        let rest = rest.trim();
+        if let Ok(v) = parse_version(rest) {
+            return pubgrub::Range::higher_than(v);
+        }
+        warn!(
+            "Failed to parse version in '{}', falling back to full range",
+            req
+        );
+        return pubgrub::Range::full();
+    }
+
+    // Less-than: "<X.Y.Z" (used in compound expressions)
+    if let Some(rest) = req.strip_prefix('<') {
+        let rest = rest.trim();
+        if let Ok(v) = parse_version(rest) {
+            return pubgrub::Range::strictly_lower_than(v);
+        }
+        warn!(
+            "Failed to parse version in '{}', falling back to full range",
+            req
+        );
+        return pubgrub::Range::full();
+    }
+
+    // Bare version string: exact pin (Beru default)
+    // "11.0.2" → =11.0.2
+    if let Ok(v) = parse_version(req) {
+        return pubgrub::Range::singleton(v);
+    }
+
+    warn!(
+        "Could not parse version requirement '{}', falling back to full range",
+        req
+    );
+    pubgrub::Range::full()
+}
+
+/// Compute the upper bound for a caret range.
+///
+/// - `^1.2.3` → `2.0.0` (bump major)
+/// - `^0.2.3` → `0.3.0` (bump minor, 0.x special case)
+/// - `^0.0.3` → `0.0.4` (bump patch, 0.0.x special case)
+fn caret_upper_bound(major: u32, minor: u32, patch: u32) -> SemanticVersion {
+    if major > 0 {
+        SemanticVersion::new(major + 1, 0, 0)
+    } else if minor > 0 {
+        SemanticVersion::new(0, minor + 1, 0)
+    } else {
+        SemanticVersion::new(0, 0, patch + 1)
+    }
+}
+
+/// Extract a version range from a recipe dependency's `toml::Value`.
+///
+/// Recipes declare dependencies as either:
+/// - A bare string: `fmt = "11.0.2"`
+/// - A table with a version key: `fmt = { version = "11.0.2" }`
+///
+/// Returns the parsed range, or `Range::full()` if no version is specified.
+fn parse_recipe_dep_range(dep_name: &str, value: &toml::Value) -> pubgrub::Range<SemanticVersion> {
+    let version_str = match value {
+        toml::Value::String(s) => Some(s.as_str()),
+        toml::Value::Table(t) => t.get("version").and_then(|v| v.as_str()),
+        _ => None,
+    };
+
+    match version_str {
+        Some(vs) => version_req_to_range(vs),
+        None => {
+            debug!(
+                "No version constraint for recipe dependency '{}', using full range",
+                dep_name
+            );
+            pubgrub::Range::full()
+        }
+    }
 }
 
 mod resolve;
 pub use resolve::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_version_valid() {
+        assert_eq!(
+            parse_version("1.2.3").unwrap(),
+            SemanticVersion::new(1, 2, 3)
+        );
+        assert_eq!(
+            parse_version("v10.0.1").unwrap(),
+            SemanticVersion::new(10, 0, 1)
+        );
+        assert_eq!(parse_version("0.1").unwrap(), SemanticVersion::new(0, 1, 0));
+        assert_eq!(parse_version("5").unwrap(), SemanticVersion::new(5, 0, 0));
+    }
+
+    #[test]
+    fn test_parse_version_invalid() {
+        assert!(parse_version("").is_err());
+        assert!(parse_version("abc").is_err());
+        assert!(parse_version("1.abc.3").is_err());
+    }
+
+    #[test]
+    fn test_version_req_exact_pin() {
+        // Bare version = exact pin (Beru default)
+        let range = version_req_to_range("11.0.2");
+        assert!(range.contains(&SemanticVersion::new(11, 0, 2)));
+        assert!(!range.contains(&SemanticVersion::new(11, 0, 3)));
+        assert!(!range.contains(&SemanticVersion::new(11, 1, 0)));
+    }
+
+    #[test]
+    fn test_version_req_explicit_exact() {
+        let range = version_req_to_range("=3.7.1");
+        assert!(range.contains(&SemanticVersion::new(3, 7, 1)));
+        assert!(!range.contains(&SemanticVersion::new(3, 7, 2)));
+    }
+
+    #[test]
+    fn test_version_req_wildcard() {
+        let range = version_req_to_range("*");
+        assert!(range.contains(&SemanticVersion::new(0, 0, 0)));
+        assert!(range.contains(&SemanticVersion::new(99, 99, 99)));
+    }
+
+    #[test]
+    fn test_version_req_caret() {
+        // ^1.2.3 → >=1.2.3, <2.0.0
+        let range = version_req_to_range("^1.2.3");
+        assert!(range.contains(&SemanticVersion::new(1, 2, 3)));
+        assert!(range.contains(&SemanticVersion::new(1, 9, 0)));
+        assert!(!range.contains(&SemanticVersion::new(2, 0, 0)));
+        assert!(!range.contains(&SemanticVersion::new(1, 2, 2)));
+    }
+
+    #[test]
+    fn test_version_req_caret_zero_major() {
+        // ^0.2.3 → >=0.2.3, <0.3.0
+        let range = version_req_to_range("^0.2.3");
+        assert!(range.contains(&SemanticVersion::new(0, 2, 3)));
+        assert!(range.contains(&SemanticVersion::new(0, 2, 9)));
+        assert!(!range.contains(&SemanticVersion::new(0, 3, 0)));
+    }
+
+    #[test]
+    fn test_version_req_caret_zero_minor() {
+        // ^0.0.3 → >=0.0.3, <0.0.4
+        let range = version_req_to_range("^0.0.3");
+        assert!(range.contains(&SemanticVersion::new(0, 0, 3)));
+        assert!(!range.contains(&SemanticVersion::new(0, 0, 4)));
+    }
+
+    #[test]
+    fn test_version_req_tilde() {
+        // ~1.2.3 → >=1.2.3, <1.3.0
+        let range = version_req_to_range("~1.2.3");
+        assert!(range.contains(&SemanticVersion::new(1, 2, 3)));
+        assert!(range.contains(&SemanticVersion::new(1, 2, 9)));
+        assert!(!range.contains(&SemanticVersion::new(1, 3, 0)));
+    }
+
+    #[test]
+    fn test_version_req_gte() {
+        let range = version_req_to_range(">=2.0.0");
+        assert!(range.contains(&SemanticVersion::new(2, 0, 0)));
+        assert!(range.contains(&SemanticVersion::new(99, 0, 0)));
+        assert!(!range.contains(&SemanticVersion::new(1, 9, 9)));
+    }
+
+    #[test]
+    fn test_version_req_compound() {
+        // >=1.0.0, <2.0.0
+        let range = version_req_to_range(">=1.0.0, <2.0.0");
+        assert!(range.contains(&SemanticVersion::new(1, 0, 0)));
+        assert!(range.contains(&SemanticVersion::new(1, 9, 9)));
+        assert!(!range.contains(&SemanticVersion::new(2, 0, 0)));
+        assert!(!range.contains(&SemanticVersion::new(0, 9, 9)));
+    }
+
+    #[test]
+    fn test_parse_recipe_dep_range_string() {
+        let val = toml::Value::String("3.7.1".to_string());
+        let range = parse_recipe_dep_range("catch2", &val);
+        assert!(range.contains(&SemanticVersion::new(3, 7, 1)));
+        assert!(!range.contains(&SemanticVersion::new(3, 7, 2)));
+    }
+
+    #[test]
+    fn test_parse_recipe_dep_range_table() {
+        let mut table = toml::map::Map::new();
+        table.insert(
+            "version".to_string(),
+            toml::Value::String("^1.0.0".to_string()),
+        );
+        let val = toml::Value::Table(table);
+        let range = parse_recipe_dep_range("fmt", &val);
+        assert!(range.contains(&SemanticVersion::new(1, 0, 0)));
+        assert!(range.contains(&SemanticVersion::new(1, 9, 0)));
+        assert!(!range.contains(&SemanticVersion::new(2, 0, 0)));
+    }
+
+    #[test]
+    fn test_parse_recipe_dep_range_no_version() {
+        let mut table = toml::map::Map::new();
+        table.insert(
+            "registry".to_string(),
+            toml::Value::String("https://example.com".to_string()),
+        );
+        let val = toml::Value::Table(table);
+        let range = parse_recipe_dep_range("other", &val);
+        // No version key → full range
+        assert!(range.contains(&SemanticVersion::new(0, 0, 0)));
+        assert!(range.contains(&SemanticVersion::new(99, 99, 99)));
+    }
+}

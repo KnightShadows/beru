@@ -85,6 +85,21 @@ pub struct PathDependency {
 }
 
 impl Dependency {
+    /// Returns the raw version constraint string, if any.
+    ///
+    /// - `Version("11.0.2")` → `Some("11.0.2")`
+    /// - `Registry { version: "3.7.1", .. }` → `Some("3.7.1")`
+    /// - `Git { tag: Some("v1.0"), .. }` → `Some("v1.0")`
+    /// - `Git { tag: None, .. }` / `Path(..)` → `None`
+    pub fn version_string(&self) -> Option<&str> {
+        match self {
+            Dependency::Version(v) => Some(v.as_str()),
+            Dependency::Registry(r) => Some(r.version.as_str()),
+            Dependency::Git(g) => g.tag.as_deref(),
+            Dependency::Path(_) => None,
+        }
+    }
+
     /// Returns a human-readable description of the source.
     pub fn source_display(&self) -> String {
         match self {

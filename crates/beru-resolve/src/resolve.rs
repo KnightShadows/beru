@@ -22,8 +22,12 @@ pub fn resolve_graph(
     let root_version = SemanticVersion::new(0, 0, 0);
 
     let mut root_deps = Vec::new();
-    for name in manifest.dependencies.keys() {
-        root_deps.push((name.clone(), pubgrub::Range::full()));
+    for (name, dep) in &manifest.dependencies {
+        let range = match dep.version_string() {
+            Some(vs) => crate::version_req_to_range(vs),
+            None => pubgrub::Range::full(),
+        };
+        root_deps.push((name.clone(), range));
     }
 
     provider.deps_cache.borrow_mut().insert(

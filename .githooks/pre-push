@@ -26,12 +26,17 @@ if ! cargo clippy --workspace --all-targets --all-features -- -D warnings; then
 fi
 
 # 3. Test Suite
-echo "[beru:pre-push] Running unit and integration tests..."
-cargo test --workspace -- --test-threads=1
-if [ $? -ne 0 ]; then
-    echo "$PREFIX FATAL: Test suite failed." >&2
-    echo "$PREFIX HINT: Ensure all unit and integration tests pass." >&2
-    exit 1
+echo "$PREFIX [3/3] Running unit and integration tests..."
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+    echo "$PREFIX Skipping tests in pre-push hook on Windows due to Git Bash/CMake conflicts."
+    echo "$PREFIX Please ensure you run 'cargo test' manually in a native terminal before pushing."
+else
+    cargo test --workspace -- --test-threads=1
+    if [ $? -ne 0 ]; then
+        echo "$PREFIX FATAL: Test suite failed." >&2
+        echo "$PREFIX HINT: Ensure all unit and integration tests pass." >&2
+        exit 1
+    fi
 fi
 
 echo "$PREFIX Pipeline completed successfully. Proceeding with git push."
