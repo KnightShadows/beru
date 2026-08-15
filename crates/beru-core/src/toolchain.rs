@@ -50,7 +50,7 @@ pub fn detect_compiler() -> Result<CompilerInfo> {
         warn!("CXX={} did not work, falling back to auto-detection", cxx);
     }
 
-    let candidates = ["c++", "g++", "clang++"];
+    let candidates = ["c++", "g++", "clang++", "cl", "cl.exe"];
     for candidate in &candidates {
         if let Ok(path) = which::which(candidate) {
             debug!("trying compiler: {}", path.display());

@@ -11,7 +11,7 @@ members = [
 
 [workspace.package]
 name = "beru"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.85"
@@ -61,8 +61,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Internal crates
-beru-core = { version = "0.5.1", path = "crates/beru-core" }
-beru-manifest = { version = "0.5.1", path = "crates/beru-manifest" }
-beru-recipe = { version = "0.5.1", path = "crates/beru-recipe" }
-beru-build = { version = "0.5.1", path = "crates/beru-build" }
-beru-resolve = { version = "0.5.1", path = "crates/beru-resolve" }
+beru-core = { version = "0.5.2", path = "crates/beru-core" }
+beru-manifest = { version = "0.5.2", path = "crates/beru-manifest" }
+beru-recipe = { version = "0.5.2", path = "crates/beru-recipe" }
+beru-build = { version = "0.5.2", path = "crates/beru-build" }
+beru-resolve = { version = "0.5.2", path = "crates/beru-resolve" }
