@@ -39,9 +39,18 @@ Beru processes three distinct dependency tables. All tables use identical syntax
 ### 2.1. `[dependencies]`
 The primary dependency table. Libraries listed here are required to compile and run your code. If your project is a `library` and another project depends on you, these dependencies are transitively compiled and linked into their project.
 
+**Version Constraints (Registry Dependencies):**
+When declaring a registry dependency, Beru defaults to **exact pins**. Supplying `"11.0.2"` guarantees exactly version `11.0.2`. To allow flexible resolution, you must explicitly opt-in using SemVer prefixes:
+*   `=1.2.3` or `1.2.3`: Exact version pin.
+*   `^1.2.3`: Caret requirement. Allows updates that do not modify the left-most non-zero digit (e.g., `>=1.2.3, <2.0.0`).
+*   `~1.2.3`: Tilde requirement. Allows patch-level updates only (e.g., `>=1.2.3, <1.3.0`).
+*   `>=1.2.3`, `<2.0.0`: Inequality bounds.
+*   `*`: Wildcard requirement. Allows absolutely any version (the resolver will select the highest available).
+
 ```toml
 [dependencies]
-fmt = "11.0.2"                                   # A Registry dependency
+fmt = "11.0.2"                                   # Exact pin
+spdlog = "^1.14.0"                               # SemVer caret range
 json = { git = "https://github.com/nlohmann/json.git", tag = "v3.11.3" } # A Git dependency
 my-local-math = { path = "../my-local-math" }    # A Path dependency
 ```
