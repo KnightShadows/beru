@@ -2,13 +2,37 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use console::style;
 use std::fs;
-use toml_edit::{DocumentMut, Item, Table, value};
+use toml_edit::{DocumentMut, InlineTable, Item, Table, Value, value};
 
 /// Arguments for `beru add`.
 #[derive(Debug, Args)]
 pub struct AddArgs {
-    /// The name of the package to add (e.g. `fmt@11.0.2` or just `fmt`).
+    /// The name of the package to add.
     pub package: String,
+
+    /// Specifies the exact semantic version of the package.
+    #[arg(long)]
+    pub version: Option<String>,
+
+    /// Specifies a Git repository URL instead of fetching from the registry.
+    #[arg(long)]
+    pub git: Option<String>,
+
+    /// Specifies the Git tag to checkout.
+    #[arg(long)]
+    pub tag: Option<String>,
+
+    /// Specifies the exact Git commit hash to checkout.
+    #[arg(long)]
+    pub rev: Option<String>,
+
+    /// Specifies the branch to checkout.
+    #[arg(long)]
+    pub branch: Option<String>,
+
+    /// Specifies a local filesystem path to a dependency.
+    #[arg(long)]
+    pub path: Option<String>,
 }
 
 pub fn exec(args: AddArgs) -> Result<()> {
@@ -18,17 +42,6 @@ pub fn exec(args: AddArgs) -> Result<()> {
     if !manifest_path.exists() {
         bail!("No Beru.toml found in the current directory.");
     }
-
-    // Parse the package string, e.g., "fmt@11.0.2" -> name: "fmt", version: "11.0.2"
-    let (name, version) = if let Some(idx) = args.package.find('@') {
-        let n = &args.package[..idx];
-        let v = &args.package[idx + 1..];
-        (n, v)
-    } else {
-        // If no version specified, default to "*" or a known format.
-        // For C++, explicit versions are highly recommended, but we can default to "*".
-        (args.package.as_str(), "*")
-    };
 
     // Read the file content
     let content = fs::read_to_string(&manifest_path).context("failed to read Beru.toml")?;
@@ -47,18 +60,45 @@ pub fn exec(args: AddArgs) -> Result<()> {
         .as_table_mut()
         .context("[dependencies] must be a table")?;
 
-    // Add or update the dependency
-    deps.insert(name, value(version));
+    // Determine what to add
+    let name = args.package;
+
+    if args.git.is_some() || args.path.is_some() {
+        let mut inline = InlineTable::new();
+        if let Some(git) = args.git {
+            inline.insert("git", git.into());
+            if let Some(tag) = args.tag {
+                inline.insert("tag", tag.into());
+            }
+            if let Some(rev) = args.rev {
+                inline.insert("rev", rev.into());
+            }
+            if let Some(branch) = args.branch {
+                inline.insert("branch", branch.into());
+            }
+        } else if let Some(path) = args.path {
+            inline.insert("path", path.into());
+        }
+
+        deps.insert(&name, Item::Value(Value::InlineTable(inline)));
+        println!(
+            "{} dependency {} to Beru.toml",
+            style("Added").green().bold(),
+            style(&name).cyan().bold()
+        );
+    } else {
+        let version = args.version.unwrap_or_else(|| "*".to_string());
+        deps.insert(&name, value(&version));
+        println!(
+            "{} dependency {} v{} to Beru.toml",
+            style("Added").green().bold(),
+            style(&name).cyan().bold(),
+            style(&version).yellow()
+        );
+    }
 
     // Write it back to disk
     fs::write(&manifest_path, doc.to_string()).context("failed to write Beru.toml")?;
-
-    println!(
-        "{} dependency {} v{} to Beru.toml",
-        style("Added").green().bold(),
-        style(name).cyan().bold(),
-        style(version).yellow()
-    );
 
     Ok(())
 }
