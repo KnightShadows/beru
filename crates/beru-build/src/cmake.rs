@@ -64,7 +64,13 @@ pub fn cmake_build(build_dir: &Path, target: Option<&str>, build_type: Option<&s
     info!("building: cmake --build {}", build_dir.display());
 
     let mut cmd = Command::new(&cmake);
-    cmd.arg("--build").arg(build_dir).arg("--parallel");
+    cmd.arg("--build").arg(build_dir);
+
+    if let Ok(jobs) = std::env::var("BERU_JOBS") {
+        cmd.arg("--parallel").arg(jobs);
+    } else {
+        cmd.arg("--parallel");
+    }
 
     if let Some(t) = target {
         cmd.arg("--target").arg(t);

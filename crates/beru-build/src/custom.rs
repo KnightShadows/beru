@@ -11,10 +11,12 @@ pub fn build_dependency_custom(
 ) -> Result<()> {
     info!("building with custom commands in {}", source_dir.display());
 
-    let jobs = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1)
-        .to_string();
+    let jobs = std::env::var("BERU_JOBS").unwrap_or_else(|_| {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
+            .to_string()
+    });
 
     let install_dir_str = install_prefix.to_string_lossy();
 
