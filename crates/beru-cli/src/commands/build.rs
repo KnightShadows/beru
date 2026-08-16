@@ -79,7 +79,22 @@ pub fn exec(args: BuildArgs) -> Result<()> {
 
     let lock_path = project_dir.join("Beru.lock");
     let lockfile = if lock_path.exists() {
-        beru_manifest::BeruLock::from_dir(&project_dir).context("Failed to parse Beru.lock")?
+        let existing =
+            beru_manifest::BeruLock::from_dir(&project_dir).context("Failed to parse Beru.lock")?;
+        let is_stale = manifest
+            .dependencies
+            .keys()
+            .any(|name| !existing.packages.iter().any(|pkg| &pkg.name == name));
+        if is_stale {
+            info!("Beru.lock is out of date, resolving dependencies...");
+            let beru_exe = std::env::current_exe().ok();
+            let generated = beru_resolve::resolve_graph(&manifest, &cache, &project_dir, beru_exe)?;
+            std::fs::write(&lock_path, generated.to_string()?)
+                .context("Failed to write Beru.lock")?;
+            generated
+        } else {
+            existing
+        }
     } else {
         info!("Beru.lock not found, resolving dependencies...");
         let beru_exe = std::env::current_exe().ok();

@@ -108,7 +108,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "beru"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -131,7 +131,7 @@ dependencies = [
 
 [[package]]
 name = "beru-build"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "beru-core",
@@ -150,7 +150,7 @@ dependencies = [
 
 [[package]]
 name = "beru-core"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "dirs",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "beru-manifest"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "semver",
@@ -176,7 +176,7 @@ dependencies = [
 
 [[package]]
 name = "beru-recipe"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "beru-core",
@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "beru-resolve"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "beru-core",

@@ -62,6 +62,9 @@ pub fn exec(args: RunArgs) -> Result<()> {
                 std::process::exit(status.code().unwrap_or(1));
             }
             return Ok(());
+        } else if first.ends_with(".cpp") || first.starts_with("src/") || first.starts_with("src\\")
+        {
+            bail!("Source file '{}' not found in project.", first);
         }
     }
 
