@@ -122,7 +122,7 @@ dependencies = [
  "indicatif",
  "predicates",
  "tempfile",
- "termtree 0.4.1",
+ "termtree",
  "toml_edit",
  "tracing",
  "tracing-subscriber",
@@ -1029,7 +1029,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0de1b847b39c8131db0467e9df1ff60e6d0562ab8e9a16e568ad0fdb372e2f2"
 dependencies = [
  "predicates-core",
- "termtree 0.5.1",
+ "termtree",
 ]
 
 [[package]]
@@ -1534,12 +1534,6 @@ dependencies = [
  "rustix",
  "windows-sys 0.61.2",
 ]
-
-[[package]]
-name = "termtree"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3369f5ac52d5eb6ab48c6b4ffdc8efbcad6b89c765749064ba298f2c68a16a76"
 
 [[package]]
 name = "termtree"

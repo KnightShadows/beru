@@ -24,7 +24,7 @@ documentation = "https://github.com/KnightShadows/Beru/blob/main/docs/Home.md"
 serde = { version = "1", features = ["derive"] }
 toml = "1.1"
 toml_edit = "0.22"
-termtree = "0.4"
+termtree = "0.5"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
