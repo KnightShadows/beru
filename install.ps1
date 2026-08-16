@@ -32,6 +32,14 @@ Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath
 Write-Host "Extracting..."
 Expand-Archive -Path $ZipPath -DestinationPath $TempDir -Force
 
+# Find beru.exe — it may be in a subdirectory inside the archive
+$BinFile = Get-ChildItem -Path $TempDir -Filter $BinName -Recurse -File | Select-Object -First 1
+if ($null -eq $BinFile) {
+    Write-Error "Could not find $BinName in the downloaded archive."
+    Remove-Item -Path $TempDir -Recurse -Force
+    exit 1
+}
+
 $InstallDir = Join-Path $env:USERPROFILE ".cargo\bin"
 if (-not (Test-Path $InstallDir)) {
     $InstallDir = Join-Path $env:USERPROFILE ".local\bin"
@@ -39,7 +47,7 @@ if (-not (Test-Path $InstallDir)) {
 }
 
 Write-Host "Installing to $InstallDir..."
-Move-Item -Path (Join-Path $TempDir $BinName) -Destination (Join-Path $InstallDir $BinName) -Force
+Move-Item -Path $BinFile.FullName -Destination (Join-Path $InstallDir $BinName) -Force
 
 Remove-Item -Path $TempDir -Recurse -Force
 

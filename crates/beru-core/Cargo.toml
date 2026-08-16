@@ -10,7 +10,6 @@ homepage.workspace = true
 documentation.workspace = true
 
 [dependencies]
-beru-manifest = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
 sha2 = { workspace = true }
@@ -19,5 +18,4 @@ dirs = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-md5 = "0.7"
 tempfile = { workspace = true }

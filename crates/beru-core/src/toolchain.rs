@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use sha2::{Digest, Sha256};
 use std::process::Command;
 use tracing::{debug, warn};
 
@@ -182,7 +183,15 @@ pub fn check_compiler_feature(compiler: &CompilerInfo, source: &str, cxx_std: &s
     let dir = std::env::temp_dir().join("beru_feature_checks");
     let _ = std::fs::create_dir_all(&dir);
 
-    let hash = format!("{:x}", md5::compute(source));
+    let hash = {
+        let mut hasher = Sha256::new();
+        hasher.update(source.as_bytes());
+        let result = hasher.finalize();
+        result
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    };
     let src_path = dir.join(format!("check_{}.cpp", hash));
     let out_path = dir.join(format!("check_{}.out", hash));
 

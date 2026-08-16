@@ -60,8 +60,16 @@ pub fn exec(args: AddArgs) -> Result<()> {
         .as_table_mut()
         .context("[dependencies] must be a table")?;
 
-    // Determine what to add
-    let name = args.package;
+    // Determine what to add — support `name@version` shorthand
+    let (name, version_from_at) = if let Some(pos) = args.package.find('@') {
+        let (n, v) = args.package.split_at(pos);
+        (n.to_string(), Some(v[1..].to_string()))
+    } else {
+        (args.package, None)
+    };
+
+    // Explicit --version flag takes precedence over @version shorthand
+    let effective_version = args.version.or(version_from_at);
 
     if args.git.is_some() || args.path.is_some() {
         let mut inline = InlineTable::new();
@@ -87,7 +95,7 @@ pub fn exec(args: AddArgs) -> Result<()> {
             style(&name).cyan().bold()
         );
     } else {
-        let version = args.version.unwrap_or_else(|| "*".to_string());
+        let version = effective_version.unwrap_or_else(|| "*".to_string());
         deps.insert(&name, value(&version));
         println!(
             "{} dependency {} v{} to Beru.toml",

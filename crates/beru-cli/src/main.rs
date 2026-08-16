@@ -30,7 +30,8 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if let Some(jobs) = cli.jobs {
-        std::env::set_var("BERU_JOBS", jobs.to_string());
+        // SAFETY: This runs at the start of main before any threads are spawned.
+        unsafe { std::env::set_var("BERU_JOBS", jobs.to_string()) };
     }
 
     commands::run(cli.command)

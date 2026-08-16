@@ -31,17 +31,17 @@ Beru is distributed as a standalone, statically linked binary. Installation is a
 
 ### 2.1. Installation on Linux and macOS
 
-Open your terminal and execute the following command. This will download the latest release from the official repository and place it in the `~/.beru/bin` directory.
+Open your terminal and execute the following command. This will download the latest release from the official repository and install the binary (typically in `~/.cargo/bin` or `~/.local/bin`).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KnightShadows/Beru/main/install.sh | bash
 ```
 
 **Modifying your PATH:**
-For convenience, you must ensure that `~/.beru/bin` is accessible from anywhere in your terminal. The installation script will usually prompt you to do this. If it does not, add the following line to your shell configuration file (e.g., `~/.bashrc`, `~/.zshrc`, or `~/.profile`):
+The installation script will automatically check if the target directory is in your `PATH` and append it to your shell configuration (e.g., `~/.bashrc`, `~/.zshrc`, or `~/.profile`) if needed:
 
 ```bash
-export PATH="$HOME/.beru/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
 ### 2.2. Installation on Windows
@@ -141,7 +141,7 @@ The `run` command is a convenience wrapper. It tells Beru to build the project a
 When you execute a build command, Beru performs a precise orchestration sequence:
 
 1.  **Resolution:** Beru reads `Beru.toml`. Since there are no dependencies yet, this step finishes instantly. (If there were dependencies, it would invoke the PubGrub algorithm).
-2.  **Toolchain Generation:** Beru creates a hidden directory called `.beru/` in your project root. Inside, it synthesizes a `beru-toolchain.cmake` file. This file contains the precise include paths and linker flags for any dependencies.
+2.  **Toolchain Generation:** Beru synthesizes a `beru-toolchain.cmake` file in your project root. This file contains the precise include paths and linker flags for any dependencies.
 3.  **Compilation:** Beru invokes your system's CMake to read the local `CMakeLists.txt`, injecting the synthesized toolchain. CMake then invokes your compiler (GCC/Clang/MSVC) to compile `src/main.cpp`.
 4.  **Execution:** Finally, Beru locates the output binary (typically located in `build/hello_beru` on Unix or `build/Debug/hello_beru.exe` on Windows) and spawns it.
 
@@ -194,6 +194,6 @@ To reset your project to a pristine state, simply run:
 beru clean
 ```
 
-This command safely deletes the `build/` directory and the generated `beru-toolchain.cmake` file.
+This command safely deletes the `build/` directory and generated CMake files (`beru-toolchain.cmake`, `beru-override.cmake`).
 
 In the next chapter, we will look at how Beru's workflow compares to traditional C++ workflows, preparing you to migrate your existing projects.

@@ -30,12 +30,12 @@ This is the most computationally expensive phase. Beru checks the global binary 
 If a cache miss occurs, Beru invokes a completely isolated, out-of-source CMake build for that specific library. It compiles the static or shared objects and installs them—alongside their public header files—into a unique, hashed prefix directory within the cache.
 
 ### 2.4. Stage 4: Toolchain Orchestration
-Once all dependencies are securely cached, Beru generates the `.beru/beru-toolchain.cmake` file in your local project root. 
+Once all dependencies are securely cached, Beru generates the `beru-toolchain.cmake` file in your local project root. 
 
 This file is a dynamically synthesized CMake module. It iterates over the exported `include_dirs` and `cmake_targets` of every dependency in your graph, injecting absolute paths pointing into the `~/.beru/cache/` directory.
 
 ### 2.5. Stage 5: The Final Build
-Finally, Beru invokes the system's CMake executable against your local project source code. It passes the `-DCMAKE_TOOLCHAIN_FILE=.beru/beru-toolchain.cmake` flag, ensuring that your local `find_package` calls or `target_link_libraries` directives successfully locate and link the cached artifacts.
+Finally, Beru invokes the system's CMake executable against your local project source code. It passes the `-DCMAKE_TOOLCHAIN_FILE=beru-toolchain.cmake` flag, ensuring that your local `find_package` calls or `target_link_libraries` directives successfully locate and link the cached artifacts.
 
 The resulting artifact is placed in the standard `build/` output directory.
 

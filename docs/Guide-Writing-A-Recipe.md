@@ -54,37 +54,52 @@ tag = "11.0.2"
 
 ### 1.3. The Build Section
 
-This section instructs Beru on the underlying build system used by the library. Currently, Beru supports `cmake` and `header_only`.
+This section instructs Beru on the underlying build system used by the library. Beru supports `cmake` (default) and `custom` shell command pipelines.
 
 ```toml
 [build]
 system = "cmake"
+cmake-args = ["-DFMT_DOC=OFF", "-DFMT_TEST=OFF", "-DFMT_INSTALL=ON"]
 ```
 
 When `system = "cmake"` is specified, Beru will execute the equivalent of:
 ```bash
-cmake -S <source_dir> -B <build_dir> -DCMAKE_INSTALL_PREFIX=<cache_dir>
+cmake -S <source_dir> -B <build_dir> -DCMAKE_INSTALL_PREFIX=<cache_dir> <cmake-args>
 cmake --build <build_dir>
 cmake --install <build_dir>
 ```
 
-**Header-Only Libraries:**
-If the library consists purely of `.h` or `.hpp` files and requires no compilation (e.g., `nlohmann_json`), use `system = "header_only"`. Beru will skip the expensive CMake compilation step entirely and simply copy the headers to the cache.
+**Header-Only Packages:**
+If the library consists purely of `.h` or `.hpp` files and requires no compilation (e.g., `nlohmann_json`), set `type = "header-only"` under `[package]`.
+
+**Custom Build Systems:**
+For libraries using custom shell scripts or build tools (like Make or `./configure`), set `system = "custom"` and provide a `commands` array with `{install_dir}` and `{jobs}` placeholders:
+
+```toml
+[build]
+system = "custom"
+commands = [
+    "./bootstrap.sh --prefix={install_dir}",
+    "./b2 install --prefix={install_dir} -j{jobs}"
+]
+```
 
 ### 1.4. The Export Section (The Critical Step)
 
 This is where most recipes fail. After Beru compiles the library and installs it to the hidden cache directory, it must generate a toolchain file for the downstream user so their project can find the library.
 
-To do this, Beru needs to know what CMake targets the library generated.
+To do this, Beru needs to know what include directories, CMake package names, and CMake targets the library generated.
 
 ```toml
 [export]
-include_dirs = ["include"]
-cmake_targets = ["fmt::fmt"]
+include-dirs = ["include"]
+cmake-package = "fmt"
+cmake-targets = ["fmt::fmt"]
 ```
 
-*   **`include_dirs`:** An array of directory paths relative to the installation root where the public header files reside. By standard convention, this is almost always `["include"]`.
-*   **`cmake_targets`:** This is the exact string a user would pass to `target_link_libraries()` in raw CMake. You must inspect the upstream library's documentation (or its `*Config.cmake` files) to find the correct exported target name. For `{fmt}`, it is `fmt::fmt`. For `spdlog`, it is `spdlog::spdlog`.
+*   **`include-dirs`:** An array of directory paths relative to the installation root where the public header files reside. By standard convention, this is almost always `["include"]`.
+*   **`cmake-package`:** The package name passed to `find_package(<name> REQUIRED)`.
+*   **`cmake-targets`:** This is the exact string a user would pass to `target_link_libraries()` in raw CMake. You must inspect the upstream library's documentation (or its `*Config.cmake` files) to find the correct exported target name. For `{fmt}`, it is `fmt::fmt`. For `spdlog`, it is `spdlog::spdlog`.
 
 ---
 

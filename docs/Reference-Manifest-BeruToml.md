@@ -72,7 +72,7 @@ While Beru defaults to sensible build orchestration strategies, the `[build]` ta
 
 | Field | Type | Required | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `system` | Enum | No | `"cmake"` | The backend build system to invoke. Currently, Beru exclusively supports `"cmake"`. Future versions may introduce `"custom"` script orchestration. |
+| `system` | Enum | No | `"cmake"` | The backend build system to invoke. Valid options are `"cmake"` (default) and `"custom"`. With `"custom"`, build commands are specified in a `commands` array and executed via shell. Template variables `{install_dir}` and `{jobs}` are expanded automatically. Recipes using `system = "custom"` must declare an `[export]` section. |
 | `cmake-minimum` | String | No | - | Specifies the lowest version of CMake required to orchestrate this package. If the user's system CMake is older, Beru will abort the build with a descriptive error before touching the filesystem. |
 | `shared-libs` | Boolean | No | `false` | Instructs the orchestrator to attempt building `.so` (Linux), `.dylib` (macOS), or `.dll` (Windows) shared objects instead of static archives. |
 

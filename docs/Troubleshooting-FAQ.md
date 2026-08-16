@@ -59,6 +59,6 @@ If you are, the upstream recipe is likely flawed. You will need to inspect the l
 
 **Resolution:** 
 The Beru cache is completely safe to destroy. It is just generated binaries. 
-1. Delete the local orchestration cache: `beru clean`
-2. Wipe the global binary cache: `rm -rf ~/.beru/cache/` (or `Remove-Item -Recurse -Force ~/.beru/cache/` on Windows).
+1. Delete the local project build artifacts: `beru clean`
+2. Wipe the global binary cache: `beru cache clean` (or manually remove `~/.beru/cache/`).
 3. Run `beru build`. Beru will re-download the tarballs and recompile everything from scratch using your new, pristine compiler environment.

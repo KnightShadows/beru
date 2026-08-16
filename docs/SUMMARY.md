@@ -24,6 +24,8 @@
   * [`beru test`](Reference-CLI-test.md)
   * [`beru run`](Reference-CLI-run.md)
   * [`beru index update`](Reference-CLI-index-update.md)
+  * [`beru cache`](Reference-CLI-cache.md)
+  * [`beru clean`](Reference-CLI-clean.md)
 
 ### 🧠 Explanation
 * [Dependency Resolution](Concepts-Dependency-Resolution.md)

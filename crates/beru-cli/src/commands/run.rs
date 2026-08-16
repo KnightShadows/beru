@@ -116,7 +116,9 @@ fn find_executable(build_dir: &std::path::Path, name: &str) -> Result<std::path:
         build_dir.join(name),
         build_dir.join(format!("{name}.exe")),
         build_dir.join("Debug").join(name),
+        build_dir.join("Debug").join(format!("{name}.exe")),
         build_dir.join("Release").join(name),
+        build_dir.join("Release").join(format!("{name}.exe")),
     ];
 
     for candidate in &candidates {

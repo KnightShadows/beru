@@ -55,4 +55,5 @@ The following table provides a high-level overview of the available subcommands.
 | **[`beru test`](Reference-CLI-test.md)** | Execution | Implicitly builds the project and executes the CTest suite in parallel. |
 | **[`beru run`](Reference-CLI-run.md)** | Execution | A convenience wrapper that invokes `build` and then immediately spawns the resulting executable binary. |
 | **[`beru index update`](Reference-CLI-index-update.md)** | Maintenance | Synchronizes the local clone of the package registry with the upstream Git repository. |
-| **`beru clean`** | Maintenance | Safely deletes the `.beru/` orchestration directory and the `build/` compilation artifacts, restoring the project to a pristine state. |
+| **[`beru cache`](Reference-CLI-cache.md)** | Maintenance | Manage the global binary cache: view disk usage (`beru cache size`) or clean cached data (`beru cache clean`). |
+| **[`beru clean`](Reference-CLI-clean.md)** | Maintenance | Removes the `build/` directory and generated CMake files (`beru-toolchain.cmake`, `beru-override.cmake`), restoring the project to a pristine state. |

@@ -29,7 +29,7 @@ When invoked, `beru new` performs the following operations:
 ### `[NAME]` (Positional Argument)
 **Required.** The name of the project. This will be used as the directory name, the package name in `Beru.toml`, the CMake project name, and the output binary name. 
 
-*Validation:* The name must consist only of lowercase alphanumeric characters, underscores, and hyphens.
+*Validation:* The name must consist only of lowercase alphanumeric characters and hyphens, must start with a letter, and be at least 2 characters long.
 
 ### `--type <TYPE>`
 **Default:** `executable`

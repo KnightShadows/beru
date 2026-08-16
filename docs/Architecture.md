@@ -30,7 +30,7 @@ The resulting artifacts (static archives `.a`/`.lib`, shared objects `.so`/`.dll
 ### Stage 4: Orchestration and Final Link (`beru-cli`)
 With all dependencies safely compiled and cached, control returns to the top-level `beru-cli` runner. 
 
-The CLI synthesizes the `beru-toolchain.cmake` file inside the local project's hidden `.beru/` directory. This file iterates over the dependency graph, injecting `CMAKE_PREFIX_PATH` variables that point precisely to the hashed directories in the global cache.
+The CLI synthesizes the `beru-toolchain.cmake` file inside the local project root. This file iterates over the dependency graph, injecting `CMAKE_PREFIX_PATH` variables that point precisely to the hashed directories in the global cache.
 
 Finally, Beru invokes the system's `cmake` and `cmake --build` commands against the user's local source code, injecting the synthesized toolchain. The compiler locates the cached headers, the linker locates the cached archives, and the final executable is emitted into the `build/` directory.
 
@@ -61,7 +61,7 @@ flowchart TD
     subgraph Stage 4: Orchestration
         Cache --> Orchestrator(beru-cli)
         Manifest --> Orchestrator
-        Orchestrator -- Synthesis --> Toolchain[.beru/beru-toolchain.cmake]
+        Orchestrator -- Synthesis --> Toolchain[beru-toolchain.cmake]
         
         Toolchain --> Compiler(System CMake)
         Source[Local src/] --> Compiler

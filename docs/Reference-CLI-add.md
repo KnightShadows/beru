@@ -30,6 +30,12 @@ The name of the package you wish to add.
 beru add fmt
 ```
 
+You can also use the shorthand `name@version` syntax to specify a version inline:
+
+```bash
+beru add fmt@11.0.2
+```
+
 ### `--version <VERSION>`
 Specifies the exact semantic version of the package.
 
@@ -53,6 +59,13 @@ beru add spdlog --git https://github.com/gabime/spdlog.git --tag v1.14.1
 
 ### `--rev <COMMIT_HASH>`
 Used in conjunction with `--git`. Specifies the exact Git commit hash to checkout.
+
+### `--branch <BRANCH>`
+Used in conjunction with `--git`. Specifies the branch to checkout.
+
+```bash
+beru add spdlog --git https://github.com/gabime/spdlog.git --branch develop
+```
 
 ### `--path <PATH>`
 Specifies a local filesystem path to a dependency. This is highly useful for monorepos or local package development.

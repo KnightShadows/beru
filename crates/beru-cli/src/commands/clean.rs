@@ -13,6 +13,7 @@ pub fn exec(_args: CleanArgs) -> Result<()> {
 
     let build_dir = project_dir.join("build");
     let toolchain_file = project_dir.join("beru-toolchain.cmake");
+    let override_file = project_dir.join("beru-override.cmake");
 
     let mut cleaned_something = false;
 
@@ -25,6 +26,12 @@ pub fn exec(_args: CleanArgs) -> Result<()> {
     if toolchain_file.exists() {
         fs::remove_file(&toolchain_file).context("failed to remove toolchain file")?;
         info!("Removed toolchain file");
+        cleaned_something = true;
+    }
+
+    if override_file.exists() {
+        fs::remove_file(&override_file).context("failed to remove override file")?;
+        info!("Removed override file");
         cleaned_something = true;
     }
 
