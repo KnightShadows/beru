@@ -149,6 +149,25 @@ pub fn build_dependency_cmake(
     let mut extra_args = cmake_args.to_vec();
     extra_args.push(format!("-DCMAKE_BUILD_TYPE={}", cmake_build_type));
 
+    // Disable test suites, examples, and docs for dependencies by default
+    let default_disables = [
+        "-DBUILD_TESTING=OFF",
+        "-DBUILD_TESTS=OFF",
+        "-DFMT_TEST=OFF",
+        "-DFMT_DOC=OFF",
+        "-DSPDLOG_BUILD_TESTS=OFF",
+        "-DSPDLOG_BUILD_EXAMPLE=OFF",
+        "-DCATCH_BUILD_TESTING=OFF",
+        "-Dgtest_build_tests=OFF",
+        "-Dgmock_build_tests=OFF",
+    ];
+    for flag in &default_disables {
+        let key = flag.split('=').next().unwrap();
+        if !extra_args.iter().any(|arg| arg.starts_with(key)) {
+            extra_args.push(flag.to_string());
+        }
+    }
+
     cmake_configure(
         source_dir,
         &build_dir,

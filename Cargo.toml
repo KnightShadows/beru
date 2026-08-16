@@ -10,14 +10,14 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.4"
+version = "0.5.5"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.85"
-description = "A modern, fast, and secure C++ package manager and build orchestrator."
-repository = "https://github.com/KnightShadows/Beru"
-homepage = "https://github.com/KnightShadows/Beru"
-documentation = "https://github.com/KnightShadows/Beru/blob/main/docs/Home.md"
+description = "A modern, declarative, and lightning-fast C++ package manager and build orchestrator."
+repository = "https://github.com/KnightShadows/beru"
+homepage = "https://github.com/KnightShadows/beru"
+documentation = "https://github.com/KnightShadows/beru#readme"
 
 [workspace.dependencies]
 # Serialization
@@ -60,8 +60,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Internal crates
-beru-core = { version = "0.5.4", path = "crates/beru-core" }
-beru-manifest = { version = "0.5.4", path = "crates/beru-manifest" }
-beru-recipe = { version = "0.5.4", path = "crates/beru-recipe" }
-beru-build = { version = "0.5.4", path = "crates/beru-build" }
-beru-resolve = { version = "0.5.4", path = "crates/beru-resolve" }
+beru-core = { version = "0.5.5", path = "crates/beru-core" }
+beru-manifest = { version = "0.5.5", path = "crates/beru-manifest" }
+beru-recipe = { version = "0.5.5", path = "crates/beru-recipe" }
+beru-build = { version = "0.5.5", path = "crates/beru-build" }
+beru-resolve = { version = "0.5.5", path = "crates/beru-resolve" }
