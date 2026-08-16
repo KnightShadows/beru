@@ -132,16 +132,33 @@ pub fn exec(args: BuildArgs) -> Result<()> {
             Some(&cache.index_dir()),
         )?;
 
-        if let Some((r, _)) = recipe {
-            let mut targets = r.export.cmake_targets.clone();
-            if targets.is_empty() {
-                targets = r.export.link_libs.clone();
+        let package_name = if let Some((ref r, _)) = recipe {
+            r.export
+                .cmake_package
+                .clone()
+                .or_else(|| Some(pkg.name.clone()))
+        } else {
+            Some(pkg.name.clone())
+        };
+
+        let mut targets = if let Some((ref r, _)) = recipe {
+            let mut t = r.export.cmake_targets.clone();
+            if t.is_empty() {
+                t = r.export.link_libs.clone();
             }
-            cmake_deps.push(beru_build::CMakeDependency {
-                package_name: r.export.cmake_package.clone(),
-                targets,
-            });
+            t
+        } else {
+            Vec::new()
+        };
+
+        if targets.is_empty() {
+            targets.push(format!("{}::{}", pkg.name, pkg.name));
         }
+
+        cmake_deps.push(beru_build::CMakeDependency {
+            package_name,
+            targets,
+        });
     }
 
     let toolchain_path = project_dir.join("beru-toolchain.cmake");

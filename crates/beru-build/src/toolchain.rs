@@ -76,12 +76,24 @@ pub fn generate_toolchain_cmake(
     content.push_str("# ---------------------------------------------------------\n");
     content.push_str("macro(beru_link_dependencies TARGET_NAME)\n");
 
+    for path in prefix_paths {
+        let escaped = path.to_string_lossy().replace('\\', "/");
+        content.push_str(&format!(
+            "    target_include_directories(${{TARGET_NAME}} PRIVATE \"{}/include\")\n",
+            escaped
+        ));
+        content.push_str(&format!(
+            "    target_link_directories(${{TARGET_NAME}} PRIVATE \"{}/lib\")\n",
+            escaped
+        ));
+    }
+
     let mut sorted_deps = cmake_deps.iter().collect::<Vec<_>>();
     sorted_deps.sort_by_key(|d| d.package_name.as_deref().unwrap_or(""));
 
     for dep in sorted_deps {
         if let Some(pkg) = &dep.package_name {
-            content.push_str(&format!("    find_package({} REQUIRED)\n", pkg));
+            content.push_str(&format!("    find_package({} QUIET)\n", pkg));
         }
         for target in &dep.targets {
             content.push_str(&format!(
