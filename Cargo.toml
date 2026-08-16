@@ -23,7 +23,7 @@ documentation = "https://github.com/KnightShadows/Beru/blob/main/docs/Home.md"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 toml = "1.1"
-toml_edit = "0.22"
+toml_edit = "0.25"
 termtree = "0.4"
 
 # CLI
