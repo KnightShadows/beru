@@ -6,6 +6,7 @@
 
   <a href="https://github.com/KnightShadows/Beru/actions"><img src="https://github.com/KnightShadows/Beru/workflows/CI/badge.svg" alt="Build Status"></a>
   <a href="https://crates.io/crates/beru"><img src="https://img.shields.io/crates/v/beru.svg" alt="Crates.io"></a>
+  <a href="https://github.com/KnightShadows/beru_index"><img src="https://img.shields.io/badge/Package%20Index-beru__index-orange.svg" alt="Beru Index"></a>
   <a href="https://github.com/KnightShadows/Beru/blob/main/LICENSE-MIT"><img src="https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg" alt="License"></a>
   
   <br/>
@@ -23,10 +24,23 @@ Written entirely in Rust, Beru brings the developer experience of Cargo and npm 
 * 📦 **Zero-Configuration Manifests**: Ditch CMake for your project definitions. Use a strongly-typed, human-readable `Beru.toml` file to declare your dependencies, C++ standard, and build profile.
 * 🏃 **Ad-Hoc Execution**: Need to run a quick script or competitive programming file? Run `beru run script.cpp` and Beru will auto-configure CMake and magically link all your dependencies for you!
 * 🧠 **Mathematical Dependency Resolution**: Beru integrates the battle-tested **[PubGrub algorithm](https://github.com/pubgrub-rs/pubgrub)**. When your dependencies conflict, Beru doesn't fail with a cryptic linker error; it outputs a step-by-step logical proof explaining exactly *why* the graph is unsolvable.
-* ⚡ **Decentralized, Instant Graph Resolution**: Say goodbye to slow API calls. Beru clones the global registry via Git. Resolution happens entirely offline in $O(1)$ time.
+* ⚡ **Decentralized, Instant Graph Resolution**: Say goodbye to slow API calls. Beru clones the global registry from **[beru_index](https://github.com/KnightShadows/beru_index)** via Git. Resolution happens entirely offline in $O(1)$ time.
 * 🛠️ **Enterprise Tooling Built-in**: Fast syntax-only compilations via `beru check`, dependency graph visualization via `beru tree`, and automatic parallel test execution via `beru test`.
 * 🛡️ **Cryptographic Binary Caching**: Third-party libraries are compiled exactly once. Their resulting `.a`/`.lib` artifacts and headers are globally cached under strict cryptographic hashes of your compiler version and requested C++ standard, completely eliminating ABI poisoning.
 * 🔌 **Seamless CMake Integration**: While Beru handles the orchestration, it generates standard `cmake` toolchain files under the hood. It integrates perfectly with your favorite IDEs (CLion, VSCode, Visual Studio).
+
+---
+
+## 📚 Official Package Index
+
+Explore available C++ libraries, browse version recipes, or contribute new packages at the official Beru Registry:
+
+👉 **[github.com/KnightShadows/beru_index](https://github.com/KnightShadows/beru_index)**
+
+Sync and update your local recipe index at any time:
+```bash
+beru index update
+```
 
 ---
 
@@ -83,13 +97,15 @@ Everything you need to master Beru—from migrating legacy Conan/vcpkg projects,
 *   [**Getting Started Guide**](docs/Getting-Started.md)
 *   [**Manifest (`Beru.toml`) Reference**](docs/Reference-Manifest-BeruToml.md)
 *   [**Command Line Interface Reference**](docs/Reference-CLI.md)
+*   [**Authoring Recipes for Beru Index**](docs/Guides-Authoring-Recipes.md)
+*   [**Official Package Index Repository**](https://github.com/KnightShadows/beru_index)
 *   [**Architecture & PubGrub Concepts**](docs/Architecture.md)
 
 ---
 
 ## 🤝 Contributing
 
-Beru is an open-source project driven by the C++ and Rust communities. Whether you want to package a new C++ library for the global index or hack on the core Rust orchestrator, we welcome your PRs!
+Beru is an open-source project driven by the C++ and Rust communities. Whether you want to package a new C++ library for the global index (**[beru_index](https://github.com/KnightShadows/beru_index)**) or hack on the core Rust orchestrator, we welcome your PRs!
 
 Please read our comprehensive **[Contributing Guide](docs/Contributing.md)** before submitting code.
 
