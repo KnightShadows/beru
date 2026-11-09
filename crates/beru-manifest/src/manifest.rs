@@ -30,6 +30,22 @@ pub struct BeruManifest {
     /// `[system-dependencies]` — packages provided by the host environment or CMake/pkg-config.
     #[serde(default, rename = "system-dependencies")]
     pub system_dependencies: BTreeMap<String, crate::dependency::SystemDependency>,
+
+    /// `[workspace]` — monorepo workspace configuration.
+    #[serde(default)]
+    pub workspace: Option<WorkspaceConfig>,
+}
+
+/// `[workspace]` table in a `Beru.toml` manifest.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct WorkspaceConfig {
+    /// Workspace member directories.
+    #[serde(default)]
+    pub members: Vec<String>,
+
+    /// Excluded member directories.
+    #[serde(default)]
+    pub exclude: Vec<String>,
 }
 
 /// `[package]` table.
@@ -228,6 +244,16 @@ impl BeruManifest {
         semver::Version::parse(&self.package.version)
             .map_err(|_| ManifestError::InvalidVersion(self.package.version.clone()))?;
 
+        if let Some(ref ws) = self.workspace {
+            for member in &ws.members {
+                if member.trim().is_empty() {
+                    return Err(ManifestError::InvalidManifest(
+                        "Workspace member path cannot be empty".to_string(),
+                    ));
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -345,6 +371,29 @@ sanitizers = ["address", "undefined"]
         assert_eq!(rel_prof.warnings.as_deref(), Some("strict"));
         assert_eq!(rel_prof.flags, vec!["-fno-omit-frame-pointer"]);
         assert!(manifest.profile.contains_key("debug"));
+    }
+
+    #[test]
+    fn test_parse_workspace_manifest() {
+        let toml = r#"
+[package]
+name = "engine-root"
+version = "0.1.0"
+
+[workspace]
+members = [
+    "libs/core",
+    "apps/client",
+]
+exclude = [
+    "archive",
+]
+"#;
+        let manifest = BeruManifest::parse_toml(toml).unwrap();
+        assert!(manifest.workspace.is_some());
+        let ws = manifest.workspace.unwrap();
+        assert_eq!(ws.members, vec!["libs/core", "apps/client"]);
+        assert_eq!(ws.exclude, vec!["archive"]);
     }
 
     #[test]

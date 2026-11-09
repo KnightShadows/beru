@@ -13,7 +13,7 @@ use beru_manifest::BeruManifest;
 use beru_recipe::{beru_exe_dir, resolve_recipe};
 
 /// Arguments for `beru build`.
-#[derive(Debug, Args)]
+#[derive(Debug, Args, Clone)]
 pub struct BuildArgs {
     /// Build profile to use
     #[arg(long, default_value = "debug")]
@@ -21,39 +21,104 @@ pub struct BuildArgs {
 
     /// Optional target filename (e.g., day1.cpp)
     pub target: Option<String>,
+
+    /// Specific package to build in a workspace
+    #[arg(short, long)]
+    pub package: Option<String>,
 }
 
 pub fn exec(args: BuildArgs) -> Result<()> {
     let project_dir = std::env::current_dir().context("failed to get current directory")?;
+    exec_in_dir(&project_dir, args)
+}
 
-    let manifest = BeruManifest::from_dir(&project_dir)
+pub fn exec_in_dir(project_dir: &Path, args: BuildArgs) -> Result<()> {
+    let manifest = BeruManifest::from_dir(project_dir)
         .context("failed to parse Beru.toml (are you in a Beru project directory?)")?;
+
+    // Handle workspace root
+    if let Some(ref ws) = manifest.workspace {
+        if let Some(ref pkg_name) = args.package {
+            let mut found = false;
+            for member in &ws.members {
+                let member_dir = project_dir.join(member);
+                if !member_dir.exists() {
+                    continue;
+                }
+                let member_manifest = BeruManifest::from_dir(&member_dir)?;
+                if &member_manifest.package.name == pkg_name {
+                    found = true;
+                    let mut member_args = args.clone();
+                    member_args.package = None;
+                    exec_in_dir(&member_dir, member_args)?;
+                    break;
+                }
+            }
+            if !found {
+                bail!("Package '{}' not found in workspace members", pkg_name);
+            }
+            return Ok(());
+        } else if !ws.members.is_empty() {
+            println!(
+                "{} workspace with {} member(s)...",
+                style("Building").green().bold(),
+                ws.members.len()
+            );
+            for member in &ws.members {
+                let member_dir = project_dir.join(member);
+                if !member_dir.exists() {
+                    bail!("Workspace member directory '{}' does not exist", member);
+                }
+                let mut member_args = args.clone();
+                member_args.package = None;
+                exec_in_dir(&member_dir, member_args)?;
+            }
+            return Ok(());
+        }
+    }
 
     let mut resolved_target_name = manifest.package.name.clone();
 
-    if manifest.package.package_type == beru_manifest::PackageType::Executable {
-        let (target_stem, show_warning) = resolve_target(&project_dir, args.target.as_deref())?;
-
+    let cmakelists_path = project_dir.join("CMakeLists.txt");
+    if !cmakelists_path.exists() {
+        let cmake_content = match manifest.package.package_type {
+            beru_manifest::PackageType::Executable => {
+                let (target_stem, show_warning) =
+                    resolve_target(project_dir, args.target.as_deref())?;
+                if target_stem != "main" {
+                    resolved_target_name = target_stem.clone();
+                }
+                if show_warning {
+                    println!(
+                        "{} Multiple files found but no 'main.cpp'. Defaulting to '{}.cpp'.",
+                        style("Warning:").yellow().bold(),
+                        target_stem
+                    );
+                }
+                format!(
+                    "cmake_minimum_required(VERSION 3.20)\nproject({} LANGUAGES CXX)\n\nadd_executable({} src/{}.cpp)\nif(COMMAND beru_link_dependencies)\n    beru_link_dependencies({})\nendif()\n",
+                    resolved_target_name, resolved_target_name, target_stem, resolved_target_name
+                )
+            }
+            beru_manifest::PackageType::HeaderOnly => {
+                format!(
+                    "cmake_minimum_required(VERSION 3.20)\nproject({0} LANGUAGES CXX)\n\nadd_library({0} INTERFACE)\ntarget_include_directories({0} INTERFACE include)\nif(EXISTS \"${{CMAKE_CURRENT_SOURCE_DIR}}/include\")\n    install(DIRECTORY include/ DESTINATION include)\nendif()\n",
+                    resolved_target_name
+                )
+            }
+            beru_manifest::PackageType::Library => {
+                format!(
+                    "cmake_minimum_required(VERSION 3.20)\nproject({0} LANGUAGES CXX)\n\nfile(GLOB_RECURSE SOURCES src/*.cpp src/*.cxx src/*.cc)\nif(SOURCES)\n    add_library({0} ${{SOURCES}})\n    target_include_directories({0} PUBLIC include)\n    if(COMMAND beru_link_dependencies)\n        beru_link_dependencies({0})\n    endif()\n    install(TARGETS {0} ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)\nelse()\n    add_library({0} INTERFACE)\n    target_include_directories({0} INTERFACE include)\nendif()\nif(EXISTS \"${{CMAKE_CURRENT_SOURCE_DIR}}/include\")\n    install(DIRECTORY include/ DESTINATION include)\nendif()\n",
+                    resolved_target_name
+                )
+            }
+        };
+        std::fs::write(cmakelists_path, cmake_content)
+            .context("failed to write dynamic CMakeLists.txt")?;
+    } else if manifest.package.package_type == beru_manifest::PackageType::Executable {
+        let (target_stem, _) = resolve_target(project_dir, args.target.as_deref())?;
         if target_stem != "main" {
-            resolved_target_name = target_stem.clone();
-        }
-
-        if show_warning {
-            println!(
-                "{} Multiple files found but no 'main.cpp'. Defaulting to '{}.cpp'.",
-                style("Warning:").yellow().bold(),
-                target_stem
-            );
-        }
-
-        let cmakelists_path = project_dir.join("CMakeLists.txt");
-        if !cmakelists_path.exists() {
-            let cmake_content = format!(
-                "cmake_minimum_required(VERSION 3.20)\nproject({} LANGUAGES CXX)\n\nadd_executable({} src/{}.cpp)\nif(COMMAND beru_link_dependencies)\n    beru_link_dependencies({})\nendif()\n",
-                resolved_target_name, resolved_target_name, target_stem, resolved_target_name
-            );
-            std::fs::write(cmakelists_path, cmake_content)
-                .context("failed to write dynamic CMakeLists.txt")?;
+            resolved_target_name = target_stem;
         }
     }
 
@@ -82,7 +147,7 @@ pub fn exec(args: BuildArgs) -> Result<()> {
     let lock_path = project_dir.join("Beru.lock");
     let lockfile = if lock_path.exists() {
         let existing =
-            beru_manifest::BeruLock::from_dir(&project_dir).context("Failed to parse Beru.lock")?;
+            beru_manifest::BeruLock::from_dir(project_dir).context("Failed to parse Beru.lock")?;
         let is_stale = manifest
             .dependencies
             .keys()
@@ -90,7 +155,7 @@ pub fn exec(args: BuildArgs) -> Result<()> {
         if is_stale {
             info!("Beru.lock is out of date, resolving dependencies...");
             let beru_exe = std::env::current_exe().ok();
-            let generated = beru_resolve::resolve_graph(&manifest, &cache, &project_dir, beru_exe)?;
+            let generated = beru_resolve::resolve_graph(&manifest, &cache, project_dir, beru_exe)?;
             std::fs::write(&lock_path, generated.to_string()?)
                 .context("Failed to write Beru.lock")?;
             generated
@@ -100,7 +165,7 @@ pub fn exec(args: BuildArgs) -> Result<()> {
     } else {
         info!("Beru.lock not found, resolving dependencies...");
         let beru_exe = std::env::current_exe().ok();
-        let generated = beru_resolve::resolve_graph(&manifest, &cache, &project_dir, beru_exe)?;
+        let generated = beru_resolve::resolve_graph(&manifest, &cache, project_dir, beru_exe)?;
         std::fs::write(&lock_path, generated.to_string()?).context("Failed to write Beru.lock")?;
         generated
     };
@@ -120,7 +185,7 @@ pub fn exec(args: BuildArgs) -> Result<()> {
             opt_dep,
             &cache,
             &abi_hash,
-            &project_dir,
+            project_dir,
             &args.profile,
         )?;
         prefix_paths.push(install_prefix);
@@ -128,7 +193,7 @@ pub fn exec(args: BuildArgs) -> Result<()> {
         let recipe = resolve_recipe(
             &pkg.name,
             Some(&pkg.version),
-            &project_dir,
+            project_dir,
             beru_exe_dir().as_deref(),
             Some(&cache.recipes_dir()),
             Some(&cache.index_dir()),
@@ -204,7 +269,7 @@ pub fn exec(args: BuildArgs) -> Result<()> {
     let build_dir = project_dir.join("build");
     println!("{} project...", style("Compiling").green().bold(),);
     build_project(
-        &project_dir,
+        project_dir,
         &build_dir,
         &toolchain_path,
         &args.profile,

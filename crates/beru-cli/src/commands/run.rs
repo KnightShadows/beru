@@ -88,6 +88,7 @@ pub fn exec(args: RunArgs) -> Result<()> {
     let build_args = super::build::BuildArgs {
         profile: args.profile.clone(),
         target: target.clone(),
+        package: None,
     };
     super::build::exec(build_args)?;
 

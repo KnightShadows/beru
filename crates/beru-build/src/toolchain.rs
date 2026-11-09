@@ -206,10 +206,18 @@ pub fn generate_toolchain_cmake_with_config(
             content.push_str(&format!("    find_package({} QUIET)\n", pkg));
         }
         for target in &dep.targets {
-            content.push_str(&format!(
-                "    target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n",
-                target
-            ));
+            let fallback_name = dep.package_name.as_deref().unwrap_or(target);
+            if target == fallback_name {
+                content.push_str(&format!(
+                    "    target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n",
+                    target
+                ));
+            } else {
+                content.push_str(&format!(
+                    "    if(TARGET {})\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n    else()\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n    endif()\n",
+                    target, target, fallback_name
+                ));
+            }
         }
     }
 

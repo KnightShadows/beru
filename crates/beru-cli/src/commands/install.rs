@@ -64,6 +64,7 @@ pub fn exec_install(args: InstallArgs) -> Result<()> {
     let build_res = super::build::exec(super::build::BuildArgs {
         profile: "release".to_string(),
         target: None,
+        package: None,
     });
     let _ = std::env::set_current_dir(old_dir);
     build_res?;

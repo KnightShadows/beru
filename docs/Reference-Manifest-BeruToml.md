@@ -135,3 +135,31 @@ warnings = "all"
 ```
 
 When invoking a release build, Beru will read the `[profile.release]` table and translate `optimization = "3"` into the appropriate compiler-specific flag (`-O3` for GCC/Clang, or `/O2` for MSVC), while simultaneously instructing the linker to perform inter-procedural optimization (`lto = true`).
+
+---
+
+## 5. The `[workspace]` Section
+
+Beru supports monorepos with multiple libraries and executables managed under a single unified root. Declaring a `[workspace]` table at the root directory allows orchestrating builds, cleanups, and tests across all member packages.
+
+```toml
+[workspace]
+members = [
+    "libs/math",
+    "libs/renderer",
+    "apps/calc",
+]
+exclude = [
+    "experimental/old-tool",
+]
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `members` | Array of Strings | Yes | Relative directory paths to member packages containing their own `Beru.toml`. |
+| `exclude` | Array of Strings | No | Member directories to ignore during workspace-wide operations. |
+
+### 5.1. Workspace Commands
+* `beru build`: Builds all workspace members in order.
+* `beru build --package <NAME>` (or `-p <NAME>`): Builds only the specified workspace member.
+* `beru clean`: Recursively removes build directories and generated CMake files across all workspace members.

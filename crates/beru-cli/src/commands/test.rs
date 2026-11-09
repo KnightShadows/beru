@@ -21,6 +21,7 @@ pub fn exec(args: TestArgs) -> Result<()> {
     build_exec(BuildArgs {
         profile: args.profile.clone(),
         target: None,
+        package: None,
     })?;
 
     let build_dir = project_dir.join("build");

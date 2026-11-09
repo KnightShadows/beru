@@ -28,4 +28,8 @@ pub enum ManifestError {
     /// The package version is not valid SemVer.
     #[error("Invalid version: {0}")]
     InvalidVersion(String),
+
+    /// A general manifest invariant or workspace validation error.
+    #[error("Invalid manifest: {0}")]
+    InvalidManifest(String),
 }
