@@ -10,14 +10,14 @@ This chapter explains the mechanics of the Beru index and why this decentralized
 
 ## 1. The Anatomy of the Index
 
-In the Beru ecosystem, the "registry" is not a website. It is simply a Git repository containing thousands of TOML files.
+In the Beru ecosystem, the "registry" is not a website. It is simply a Git repository containing 701 `recipe.toml` files across 223 packages.
 
 The official, public index is hosted on GitHub at `https://github.com/KnightShadows/beru_index.git`.
 
 ### 1.1. The Directory Structure
 If you browse this repository, you will not find any C++ source code. Instead, you will find a highly structured hierarchy of metadata files, known as recipes. 
 
-To ensure `beru resolve` can perform $O(1)$ lookups on the filesystem without parsing unnecessary files, the index is strictly organized:
+To ensure `beru resolve` can perform fast direct lookups on the filesystem without parsing unnecessary files, the index is strictly organized:
 
 ```text
 beru_index/
@@ -31,13 +31,13 @@ beru_index/
 ├── spdlog/
 │   └── 1.14.1/
 │       └── recipe.toml
-└── ... thousands of other packages
+└── ... and other packages across the registry
 ```
 
-Each `recipe.toml` acts as a blueprint. It contains the upstream URL where the actual source code (the `.tar.gz`) is hosted (usually on GitHub Releases, GitLab, or the library author's private server), along with the cryptographic `sha256` checksum and the build instructions.
+Each `recipe.toml` acts as a blueprint. It contains the upstream source location—either a release tarball URL with a cryptographic `sha256` checksum, or a Git repository with a release tag that Beru cryptographically pins to a commit SHA in `Beru.lock`—along with the build instructions.
 
 ### 1.2. The Local Clone (`~/.beru/index/`)
-When you execute `beru build` for the very first time on a fresh machine, Beru silently executes a `git clone --depth 1` of this repository, placing it in the `~/.beru/index/` directory in your home folder.
+Running `beru index update` performs a shallow clone (`git clone --depth 1`) of this repository into the `~/.beru/index/` directory in your home folder. For offline usage, Beru also bundles and embeds core recipes directly inside the binary.
 
 This local clone is the secret to Beru's extreme speed. When the PubGrub algorithm needs to know what versions of `fmt` exist to satisfy a constraint, **Beru does not make a single HTTP request.** It simply reads the subdirectories within `~/.beru/index/fmt/`. 
 

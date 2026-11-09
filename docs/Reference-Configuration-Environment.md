@@ -44,7 +44,7 @@ All cross-project data is centralized in a hidden directory within the current u
 This folder is subdivided into three critical domains:
 
 1.  **`~/.beru/bin/`**: The directory for installed tools and utilities.
-2.  **`~/.beru/index/`**: The local clone of the decentralized Git registry. This contains thousands of `recipe.toml` files. It is updated only when you explicitly run `beru index update`.
+2.  **`~/.beru/index/`**: The local clone of the decentralized Git registry. This contains 701 `recipe.toml` files across 223 packages in the official registry. It is updated when you explicitly run `beru index update`.
 3.  **`~/.beru/cache/`**: The global binary cache. When Beru compiles a third-party dependency like `fmt`, it installs the resulting static archives (`.a` / `.lib`) and header files into an isolated prefix within this folder. 
 
 **Cache Structure & Invalidation:**

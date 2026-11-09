@@ -54,7 +54,7 @@ Beru brings the effortless script-execution experience of Cargo or UV to C++.
 If you pass a `.cpp` file to `beru run`, Beru will execute it as an isolated target.
 
 **1. Inline Manifests**
-Scripts can declare their own dependencies using an inline `/// beru` manifest block at the top of the file. This allows scripts to run anywhere, even outside of a Beru project. The block accepts standard `[dependencies]` and `[package]` fields (though package metadata is optional).
+Scripts can declare their own dependencies using an inline `/// beru` manifest block at the top of the file. This allows scripts to run anywhere, even outside of a Beru project. The block accepts standard `[dependencies]` and `[package]` fields (though package metadata is optional). Note that `#include` directives are not auto-detected; dependencies must be explicitly declared in the inline manifest block or inherited from an enclosing project.
 ```cpp
 // /// beru
 // [dependencies]

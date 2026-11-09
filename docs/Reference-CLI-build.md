@@ -18,7 +18,7 @@ When you execute `beru build`, you are triggering a sophisticated, multi-stage p
 The build command first verifies the integrity of the dependency graph. It implicitly invokes the logic of `beru resolve`. If a `Beru.lock` file exists, it is parsed and verified against the `Beru.toml`. If it is missing or out of date, the PubGrub algorithm computes a new graph and writes it to disk.
 
 ### 2.2. Stage 2: The Fetch Phase
-Beru iterates through every node in the locked dependency graph. If the source for a package is a Git repository, it clones the specified `rev`, `tag`, or `branch`. If it is a registry package, it downloads the release tarball via HTTPS, verifying the cryptographic `sha256` signature immediately upon completion to prevent supply-chain attacks.
+Beru iterates through every node in the locked dependency graph. If the recipe or dependency specifies a release tarball, Beru downloads it and verifies its cryptographic `sha256` checksum. If it specifies a Git repository (as used by the majority of index recipes), Beru fetches the repository and locks the exact commit SHA in `Beru.lock` on first resolve.
 
 ### 2.3. Stage 3: The Cache Compilation Phase
 This is the most computationally expensive phase. Beru checks the global binary cache (`~/.beru/cache/`) for every dependency. A cache hit requires an exact match on:

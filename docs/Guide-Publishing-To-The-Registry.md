@@ -22,7 +22,7 @@ cd beru_index
 ```
 
 ### 1.2. Directory Structure Conventions
-The index enforces a strict, hierarchical directory structure to ensure fast O(1) lookups by the package manager. The structure is `<package_name>/<semantic_version>/recipe.toml`.
+The index enforces a strict, hierarchical directory structure to ensure fast direct lookups by the package manager. The structure is `<package_name>/<semantic_version>/recipe.toml`.
 
 For example, if you are adding version `1.14.1` of the `spdlog` library, you must create the necessary directories:
 

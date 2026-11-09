@@ -12,7 +12,7 @@ beru index update [OPTIONS]
 
 ## 2. Detailed Description
 
-Unlike traditional package managers that rely on centralized databases and REST APIs, Beru's architecture is radically decentralized. The entire global registry is simply a Git repository containing millions of lines of lightweight `recipe.toml` metadata.
+Unlike traditional package managers that rely on centralized databases and REST APIs, Beru's architecture is radically decentralized. The entire global registry is simply a Git repository containing lightweight `recipe.toml` metadata across hundreds of package recipes.
 
 The Beru binary embeds offline recipes for core libraries (such as `fmt`, `spdlog`, `nlohmann_json`, and `gtest`). To discover and resolve third-party libraries across the entire ecosystem, running `beru index update` performs a shallow clone of the official repository (`https://github.com/KnightShadows/beru_index.git`) into the `~/.beru/index/` directory on your hard drive.
 

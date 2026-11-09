@@ -27,7 +27,7 @@ To ensure clarity, this manual uses the following terms with strict, specific de
 
 ### I
 
-*   **Index:** The decentralized, global registry of Beru packages. Technically, it is a Git repository containing thousands of `recipe.toml` files, cloned locally to `~/.beru/index/`.
+*   **Index:** The decentralized, global registry of Beru packages. Technically, it is a Git repository containing 701 `recipe.toml` files across 223 packages, cloned locally to `~/.beru/index/`.
 
 ### O
 

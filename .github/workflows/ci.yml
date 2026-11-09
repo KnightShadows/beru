@@ -85,3 +85,36 @@ jobs:
 
     - name: Run tests
       run: cargo test --workspace
+
+  check_links:
+    name: Check Relative Markdown Links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify all relative markdown links
+        run: |
+          python3 -c "
+          import os, re, sys
+          from pathlib import Path
+
+          md_files = [Path('README.md')] + list(Path('docs').glob('**/*.md'))
+          broken = []
+          link_re = re.compile(r'\[.*?\]\((?!https?://|mailto:|#)(.*?)\)')
+
+          for file in md_files:
+              content = file.read_text(encoding='utf-8')
+              for match in link_re.finditer(content):
+                  raw_link = match.group(1).split('#')[0].strip()
+                  if not raw_link:
+                      continue
+                  target = (file.parent / raw_link).resolve()
+                  if not target.exists():
+                      broken.append((str(file), raw_link))
+
+          if broken:
+              print('Broken relative links found:')
+              for src, lnk in broken:
+                  print(f'  {src} -> {lnk}')
+              sys.exit(1)
+          print(f'Successfully verified relative links across {len(md_files)} markdown files!')
+          "
