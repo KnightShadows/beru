@@ -108,10 +108,9 @@ pub fn exec(args: AddArgs) -> Result<()> {
     // Write it back to disk
     fs::write(&manifest_path, doc.to_string()).context("failed to write Beru.toml")?;
 
-    // Automatically update Beru.lock if index cache exists
+    // Automatically update Beru.lock if dependency resolution succeeds
     if let Ok(manifest) = beru_manifest::BeruManifest::from_dir(&project_dir)
         && let Ok(cache) = beru_core::cache::BeruCache::default_location()
-        && cache.index_dir().exists()
         && let Ok(lock) = beru_resolve::resolve_graph(
             &manifest,
             &cache,

@@ -20,6 +20,10 @@ fn test_beru_add_dependency() {
 
     let manifest = fs::read_to_string(p.root().join("Beru.toml")).unwrap();
     assert!(manifest.contains("fmt = \"11.0.2\""));
+
+    let lock = fs::read_to_string(p.root().join("Beru.lock")).unwrap();
+    assert!(lock.contains("name = \"fmt\""));
+    assert!(lock.contains("version = \"11.0.2\""));
 }
 
 #[test]
