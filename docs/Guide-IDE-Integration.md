@@ -103,3 +103,4 @@ cmake -S . -B build
 cmake --build build
 ```
 The `if(COMMAND beru_link_dependencies)` guard ensures CMake does not fail with an "Unknown CMake command" error.
+

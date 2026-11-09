@@ -55,11 +55,13 @@ pub fn resolve_and_build_locked_dep(
                 let src = r.source;
                 if let Some(url) = src.url {
                     if url.ends_with(".tar.gz") {
-                        let sha = pkg
-                            .checksum
-                            .clone()
-                            .or(src.sha256)
-                            .expect("sha256 missing for tarball");
+                        let sha = pkg.checksum.clone().or(src.sha256).ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "sha256 checksum missing for tarball of package '{}' ({})",
+                                name,
+                                url
+                            )
+                        })?;
                         let extracted = beru_recipe::fetch_tarball(cache, &url, &sha)?;
                         beru_recipe::find_source_root(&extracted)?
                     } else {
@@ -160,5 +162,53 @@ pub fn fetch_dependency_source(
                 "Registry dependencies cannot be fetched via fetch_dependency_source. Use recipes instead."
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_missing_sha256_returns_error_not_panic() {
+        let temp = tempfile::tempdir().unwrap();
+        let project_dir = temp.path().join("proj");
+        let recipe_dir = project_dir.join("recipes").join("no-sha-pkg");
+        fs::create_dir_all(&recipe_dir).unwrap();
+
+        fs::write(
+            recipe_dir.join("recipe.toml"),
+            r#"[package]
+name = "no-sha-pkg"
+version = "1.0.0"
+type = "header-only"
+
+[source]
+url = "https://example.com/no-sha-pkg-1.0.0.tar.gz"
+
+[export]
+include-dirs = ["include"]
+"#,
+        )
+        .unwrap();
+
+        let cache = BeruCache::with_root(temp.path().join(".beru"));
+        cache.ensure_dirs().unwrap();
+
+        let pkg = beru_manifest::LockedPackage {
+            name: "no-sha-pkg".to_string(),
+            version: "1.0.0".to_string(),
+            source: "registry".to_string(),
+            checksum: None,
+            dependencies: vec![],
+        };
+
+        let result =
+            resolve_and_build_locked_dep(&pkg, None, &cache, "dummy_abi", &project_dir, "debug");
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("sha256 checksum missing for tarball"));
     }
 }
