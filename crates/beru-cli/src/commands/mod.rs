@@ -14,6 +14,7 @@ pub mod resolve;
 pub mod run;
 pub mod test;
 pub mod tree;
+pub mod update;
 
 /// Top-level Beru commands.
 #[derive(Debug, Subcommand)]
@@ -49,6 +50,9 @@ pub enum Command {
     #[command(alias = "rm")]
     Remove(remove::RemoveArgs),
 
+    /// Update dependencies in Beru.lock to their latest compatible versions
+    Update(update::UpdateArgs),
+
     /// Display a tree of dependencies
     Tree(tree::TreeArgs),
 
@@ -72,6 +76,7 @@ pub fn run(cmd: Command) -> Result<()> {
         Command::Cache(args) => cache::exec(args),
         Command::Add(args) => add::exec(args),
         Command::Remove(args) => remove::exec(args),
+        Command::Update(args) => update::exec(args),
         Command::Tree(args) => tree::exec(args),
         Command::Check(args) => check::exec(args),
         Command::Test(args) => test::exec(args),
