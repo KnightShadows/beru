@@ -75,6 +75,12 @@ pub fn exec(args: InitArgs) -> Result<()> {
         let _ = std::fs::write(cwd.join("CMakeLists.txt"), cmake);
     }
 
+    // Write CMakePresets.json if it doesn't exist
+    if !cwd.join("CMakePresets.json").exists() {
+        let presets = super::new::generate_cmake_presets();
+        let _ = std::fs::write(cwd.join("CMakePresets.json"), presets);
+    }
+
     // Write source files if they don't exist
     match args.r#type.as_str() {
         "executable" => {

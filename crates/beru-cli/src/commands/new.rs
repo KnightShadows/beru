@@ -67,6 +67,10 @@ pub fn exec(args: NewArgs) -> Result<()> {
     std::fs::write(project_dir.join("CMakeLists.txt"), cmake)
         .context("failed to write CMakeLists.txt")?;
 
+    let presets = generate_cmake_presets();
+    std::fs::write(project_dir.join("CMakePresets.json"), presets)
+        .context("failed to write CMakePresets.json")?;
+
     match args.r#type.as_str() {
         "executable" => {
             std::fs::write(project_dir.join("src").join("main.cpp"), EXECUTABLE_MAIN)?;
@@ -137,6 +141,26 @@ system = "cmake"
     )
 }
 
+pub(crate) fn generate_cmake_presets() -> String {
+    r#"{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default Config",
+      "description": "Configure using Beru toolchain",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/beru-toolchain.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ]
+}
+"#
+    .to_string()
+}
+
 pub(crate) fn generate_cmakelists(name: &str, pkg_type: &str) -> String {
     let target_name = name;
     match pkg_type {
@@ -144,16 +168,27 @@ pub(crate) fn generate_cmakelists(name: &str, pkg_type: &str) -> String {
             r#"cmake_minimum_required(VERSION 3.20)
 project({target_name} LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 add_executable({target_name} src/main.cpp)
-beru_link_dependencies({target_name})
+
+if(COMMAND beru_link_dependencies)
+    beru_link_dependencies({target_name})
+endif()
 "#
         ),
         "library" => format!(
             r#"cmake_minimum_required(VERSION 3.20)
 project({target_name} LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 add_library({target_name} src/{name}.cpp)
-beru_link_dependencies({target_name})
+
+if(COMMAND beru_link_dependencies)
+    beru_link_dependencies({target_name})
+endif()
+
 target_include_directories({target_name}
     PUBLIC
         $<BUILD_INTERFACE:${{CMAKE_CURRENT_SOURCE_DIR}}/include>
@@ -171,8 +206,14 @@ install(DIRECTORY include/ DESTINATION include)
             r#"cmake_minimum_required(VERSION 3.20)
 project({target_name} LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 add_library({target_name} INTERFACE)
-beru_link_dependencies({target_name})
+
+if(COMMAND beru_link_dependencies)
+    beru_link_dependencies({target_name})
+endif()
+
 target_include_directories({target_name}
     INTERFACE
         $<BUILD_INTERFACE:${{CMAKE_CURRENT_SOURCE_DIR}}/include>
@@ -286,4 +327,5 @@ beru-toolchain.cmake
 *.swp
 *.swo
 compile_commands.json
+CMakeUserPresets.json
 "#;

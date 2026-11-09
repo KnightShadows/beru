@@ -7,6 +7,7 @@
 * [Adding a Dependency](Guide-Adding-A-Dependency.md)
 * [Writing a Recipe](Guide-Writing-A-Recipe.md)
 * [Publishing to the Registry](Guide-Publishing-To-The-Registry.md)
+* [IDE Integration (CLion, VS Code, Visual Studio)](Guide-IDE-Integration.md)
 
 ### 📚 Reference
 * [Beru.toml Manifest](Reference-Manifest-BeruToml.md)
