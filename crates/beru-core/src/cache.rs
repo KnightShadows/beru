@@ -53,8 +53,14 @@ impl BeruCache {
     }
 
     /// Directory for a specific source archive, keyed by SHA-256.
+    /// Uses the first 16 characters of the hash to avoid exceeding Windows MAX_PATH limits.
     pub fn source_dir(&self, sha256: &str) -> PathBuf {
-        self.sources_dir().join(sha256)
+        let key = if sha256.len() > 16 {
+            &sha256[..16]
+        } else {
+            sha256
+        };
+        self.sources_dir().join(key)
     }
 
     /// Directory for compiled build artifacts (`~/.beru/cache/builds/`).

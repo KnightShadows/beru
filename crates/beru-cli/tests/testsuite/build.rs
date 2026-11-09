@@ -17,9 +17,17 @@ fn test_beru_build_success() {
         .stdout(predicate::str::contains("built successfully"));
 
     // Verify compile_commands.json was exported to project root for clangd / LSP
-    assert!(p.root().join("compile_commands.json").exists());
-
-    // Verify beru clean cleans up compile_commands.json
-    p.beru("clean").assert().success();
-    assert!(!p.root().join("compile_commands.json").exists());
+    // (Note: CMake only generates compile_commands.json for Makefile and Ninja generators, ignoring it for Visual Studio/MSBuild)
+    if p.root()
+        .join("build")
+        .join("compile_commands.json")
+        .exists()
+    {
+        assert!(p.root().join("compile_commands.json").exists());
+        // Verify beru clean cleans up compile_commands.json
+        p.beru("clean").assert().success();
+        assert!(!p.root().join("compile_commands.json").exists());
+    } else {
+        p.beru("clean").assert().success();
+    }
 }

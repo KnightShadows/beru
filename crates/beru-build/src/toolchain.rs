@@ -110,16 +110,16 @@ pub fn generate_toolchain_cmake_with_config(
         content.push_str("# Compiler warning flags (configured by Beru profile)\n");
         match warnings {
             "strict" => {
-                content.push_str("if(MSVC)\n    add_compile_options(/W4)\nelse()\n    add_compile_options(-Wall -Wextra -Wpedantic)\nendif()\n\n");
+                content.push_str("add_compile_options(\"$<$<CXX_COMPILER_ID:MSVC>:/W4>\" \"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall>\" \"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wextra>\" \"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wpedantic>\")\n\n");
             }
             "all" => {
-                content.push_str("if(MSVC)\n    add_compile_options(/W3)\nelse()\n    add_compile_options(-Wall)\nendif()\n\n");
+                content.push_str("add_compile_options(\"$<$<CXX_COMPILER_ID:MSVC>:/W3>\" \"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall>\")\n\n");
             }
             "error" => {
-                content.push_str("if(MSVC)\n    add_compile_options(/WX)\nelse()\n    add_compile_options(-Werror)\nendif()\n\n");
+                content.push_str("add_compile_options(\"$<$<CXX_COMPILER_ID:MSVC>:/WX>\" \"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Werror>\")\n\n");
             }
             "none" => {
-                content.push_str("if(MSVC)\n    add_compile_options(/w)\nelse()\n    add_compile_options(-w)\nendif()\n\n");
+                content.push_str("add_compile_options(\"$<$<CXX_COMPILER_ID:MSVC>:/w>\" \"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w>\")\n\n");
             }
             _ => {}
         }
@@ -138,7 +138,7 @@ pub fn generate_toolchain_cmake_with_config(
         };
         if !msvc_opt.is_empty() {
             content.push_str(&format!(
-                "if(MSVC)\n    add_compile_options({})\nelse()\n    add_compile_options({})\nendif()\n\n",
+                "add_compile_options(\"$<$<CXX_COMPILER_ID:MSVC>:{}>\" \"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:{}>\")\n\n",
                 msvc_opt, gnu_opt
             ));
         }
@@ -153,7 +153,7 @@ pub fn generate_toolchain_cmake_with_config(
         let san_list = config.sanitizers.join(",");
         content.push_str("# Sanitizers (configured by Beru profile)\n");
         content.push_str(&format!(
-            "if(NOT MSVC)\n    add_compile_options(-fsanitize={0} -fno-omit-frame-pointer)\n    add_link_options(-fsanitize={0})\nelse()\n    add_compile_options(/fsanitize=address)\nendif()\n\n",
+            "add_compile_options(\"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-fsanitize={0}>\" \"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-fno-omit-frame-pointer>\" \"$<$<CXX_COMPILER_ID:MSVC>:/fsanitize=address>\")\nadd_link_options(\"$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-fsanitize={0}>\")\n\n",
             san_list
         ));
     }
@@ -330,7 +330,11 @@ mod tests {
         generate_toolchain_cmake_with_config(&path, "c++20", "release", &[], &[], &config).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("-Wall -Wextra -Wpedantic"));
+        assert!(
+            content.contains("-Wall")
+                && content.contains("-Wextra")
+                && content.contains("-Wpedantic")
+        );
         assert!(content.contains("/W4"));
         assert!(content.contains("CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE"));
         assert!(content.contains("-fsanitize=address,undefined"));
