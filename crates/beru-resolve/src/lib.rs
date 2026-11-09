@@ -154,7 +154,13 @@ impl<'a> BeruProvider<'a> {
 
         let is_index_empty_or_missing = !self.cache.index_dir().exists()
             || std::fs::read_dir(self.cache.index_dir())
-                .map(|mut entries| entries.next().is_none())
+                .map(|entries| {
+                    !entries.flatten().any(|e| {
+                        let name = e.file_name();
+                        let name_str = name.to_string_lossy();
+                        !name_str.starts_with('.')
+                    })
+                })
                 .unwrap_or(true);
 
         if is_index_empty_or_missing {

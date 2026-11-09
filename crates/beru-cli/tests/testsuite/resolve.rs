@@ -52,6 +52,34 @@ fn test_resolve_missing_package_empty_index_error() {
 }
 
 #[test]
+fn test_resolve_missing_package_with_dotgit_index_error() {
+    let p = project("missing-pkg-git-index")
+        .file(
+            "Beru.toml",
+            r#"
+            [package]
+            name = "missing-pkg-git-index"
+            version = "0.1.0"
+
+            [dependencies]
+            unknown-package = "1.0.0"
+            "#,
+        )
+        .build();
+
+    // Create an empty .git directory in index (e.g. from interrupted git init/clone)
+    fs::create_dir_all(p.beru_home().join("index").join(".git")).unwrap();
+
+    p.beru("resolve")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Could not find package 'unknown-package' in index, sources, or bundled recipes",
+        ))
+        .stderr(predicates::str::contains("run `beru index update`"));
+}
+
+#[test]
 fn test_fresh_install_resolve_reaches_build() {
     let p = project("fresh-install").build();
 
