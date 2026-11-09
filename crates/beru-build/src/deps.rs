@@ -54,7 +54,7 @@ pub fn resolve_and_build_locked_dep(
             if let Some((r, _)) = recipe {
                 let src = r.source;
                 if let Some(url) = src.url {
-                    if url.ends_with(".tar.gz") {
+                    if url.ends_with(".tar.gz") || url.ends_with(".tgz") {
                         let sha = pkg.checksum.clone().or(src.sha256).ok_or_else(|| {
                             anyhow::anyhow!(
                                 "sha256 checksum missing for tarball of package '{}' ({})",

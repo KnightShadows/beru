@@ -54,11 +54,18 @@ pub fn fetch_tarball(cache: &BeruCache, url: &str, expected_sha256: &str) -> Res
 
     debug!("SHA-256 verified: {}", expected_sha256);
 
-    std::fs::create_dir_all(&dest_dir)
-        .with_context(|| format!("failed to create {}", dest_dir.display()))?;
+    let extract_res = (|| -> Result<()> {
+        std::fs::create_dir_all(&dest_dir)
+            .with_context(|| format!("failed to create {}", dest_dir.display()))?;
+        extract_tarball(&bytes, &dest_dir)
+            .with_context(|| format!("failed to extract tarball from {url}"))?;
+        Ok(())
+    })();
 
-    extract_tarball(&bytes, &dest_dir)
-        .with_context(|| format!("failed to extract tarball from {url}"))?;
+    if let Err(e) = extract_res {
+        let _ = std::fs::remove_dir_all(&dest_dir);
+        return Err(e);
+    }
 
     info!("extracted to {}", dest_dir.display());
 
@@ -74,7 +81,9 @@ pub fn fetch_git(cache: &BeruCache, url: &str, pin: Option<&str>) -> Result<Path
 
     if !repo_dir.exists() {
         info!("cloning {}", url);
-        std::fs::create_dir_all(repo_dir.parent().unwrap())?;
+        if let Some(parent) = repo_dir.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
 
         let output = std::process::Command::new("git")
             .args(["init"])
@@ -83,7 +92,8 @@ pub fn fetch_git(cache: &BeruCache, url: &str, pin: Option<&str>) -> Result<Path
             .context("failed to init git repo")?;
 
         if !output.status.success() {
-            bail!("git init failed");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("git init failed for {}:\n{}", url, stderr);
         }
 
         let output = std::process::Command::new("git")
@@ -93,7 +103,8 @@ pub fn fetch_git(cache: &BeruCache, url: &str, pin: Option<&str>) -> Result<Path
             .context("failed to add git remote")?;
 
         if !output.status.success() {
-            bail!("git remote add failed");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("git remote add failed for {}:\n{}", url, stderr);
         }
     } else {
         debug!("git repo already cloned at {}", repo_dir.display());
@@ -173,4 +184,28 @@ pub fn find_source_root(extracted_dir: &Path) -> Result<PathBuf> {
 
 fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_source_root_single_subdir() {
+        let temp = tempfile::tempdir().unwrap();
+        let nested = temp.path().join("mypkg-1.0.0");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let root = find_source_root(temp.path()).unwrap();
+        assert_eq!(root, nested);
+    }
+
+    #[test]
+    fn test_extract_tarball_corrupt_data_fails_cleanly() {
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("corrupt_dest");
+        let corrupt_data = b"not a valid tarball";
+        let res = extract_tarball(corrupt_data, &dest);
+        assert!(res.is_err());
+    }
 }
