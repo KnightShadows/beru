@@ -1,9 +1,48 @@
 use anyhow::Result;
 use beru_core::cache::BeruCache;
 use beru_manifest::{BeruLock, BeruManifest, LockedPackage};
+use pubgrub::Reporter;
 use pubgrub::SemanticVersion;
 use pubgrub::resolve;
+use std::error::Error;
 use std::path::PathBuf;
+
+fn format_error_chain(prefix: &str, err: &(dyn Error + 'static)) -> String {
+    let mut parts = vec![format!("{}: {}", prefix, err)];
+    let mut current = err.source();
+    while let Some(cause) = current {
+        let cause_str = cause.to_string();
+        if !parts.iter().any(|p| p.contains(&cause_str)) {
+            parts.push(cause_str);
+        }
+        current = cause.source();
+    }
+    parts.join(": ")
+}
+
+fn format_pubgrub_error(err: &pubgrub::PubGrubError<crate::BeruProvider>) -> String {
+    match err {
+        pubgrub::PubGrubError::NoSolution(tree) => pubgrub::DefaultStringReporter::report(tree),
+        pubgrub::PubGrubError::ErrorChoosingVersion { package, source } => format_error_chain(
+            &format!("Choosing a version for {} failed", package),
+            source,
+        ),
+        pubgrub::PubGrubError::ErrorRetrievingDependencies {
+            package,
+            version,
+            source,
+        } => format_error_chain(
+            &format!(
+                "Retrieving dependencies for {} v{} failed",
+                package, version
+            ),
+            source,
+        ),
+        pubgrub::PubGrubError::ErrorInShouldCancel(source) => {
+            format_error_chain("Resolution was cancelled", source)
+        }
+    }
+}
 
 /// Compute the full dependency graph for a manifest using PubGrub.
 pub fn resolve_graph(
@@ -35,8 +74,15 @@ pub fn resolve_graph(
         pubgrub::Dependencies::Available(root_deps.into_iter().collect()),
     );
 
-    let solution = resolve(&provider, root_pkg, root_version)
-        .map_err(|e| anyhow::anyhow!("Dependency resolution failed: {}", e))?;
+    let solution = match resolve(&provider, root_pkg, root_version) {
+        Ok(s) => s,
+        Err(err) => {
+            anyhow::bail!(
+                "Dependency resolution failed: {}",
+                format_pubgrub_error(&err)
+            );
+        }
+    };
 
     let mut locked_packages = Vec::new();
     for (name, version) in solution {

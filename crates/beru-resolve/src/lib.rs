@@ -152,10 +152,22 @@ impl<'a> BeruProvider<'a> {
             }
         }
 
-        anyhow::bail!(
-            "Could not find package '{}' in index, sources, or bundled recipes",
-            package
-        );
+        let is_index_empty_or_missing = !self.cache.index_dir().exists()
+            || std::fs::read_dir(self.cache.index_dir())
+                .map(|mut entries| entries.next().is_none())
+                .unwrap_or(true);
+
+        if is_index_empty_or_missing {
+            anyhow::bail!(
+                "Could not find package '{}' in index, sources, or bundled recipes. The package index is empty or missing; run `beru index update` to fetch recipes from the registry.",
+                package
+            );
+        } else {
+            anyhow::bail!(
+                "Could not find package '{}' in index, sources, or bundled recipes",
+                package
+            );
+        }
     }
 }
 

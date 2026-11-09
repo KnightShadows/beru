@@ -17,15 +17,76 @@ fn test_beru_resolve_dependencies() {
         )
         .build();
 
-    // First update the index in our isolated sandbox
-    p.beru("index").arg("update").assert().success();
-
-    // Now resolve dependencies
+    // Now resolve dependencies without index update (using embedded fallback)
     p.beru("resolve").assert().success();
 
     let lockfile = fs::read_to_string(p.root().join("Beru.lock")).expect("failed to read lockfile");
     assert!(lockfile.contains("fmt"));
     assert!(lockfile.contains("11.0.2"));
+}
+
+#[test]
+fn test_resolve_missing_package_empty_index_error() {
+    let p = project("missing-pkg")
+        .file(
+            "Beru.toml",
+            r#"
+            [package]
+            name = "missing-pkg"
+            version = "0.1.0"
+
+            [dependencies]
+            unknown-package = "1.0.0"
+            "#,
+        )
+        .build();
+
+    p.beru("resolve")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Could not find package 'unknown-package' in index, sources, or bundled recipes",
+        ))
+        .stderr(predicates::str::contains("run `beru index update`"));
+}
+
+#[test]
+fn test_fresh_install_resolve_reaches_build() {
+    let p = project("fresh-install").build();
+
+    p.beru("new")
+        .arg("my-engine")
+        .arg("--type")
+        .arg("executable")
+        .arg("--cxx-std")
+        .arg("c++20")
+        .assert()
+        .success();
+
+    let engine_dir = p.root().join("my-engine");
+
+    // Add fmt 11.0.2 (which is embedded in binary)
+    let mut cmd = assert_cmd::Command::cargo_bin("beru").unwrap();
+    cmd.current_dir(&engine_dir)
+        .env("BERU_HOME", p.beru_home())
+        .arg("add")
+        .arg("fmt")
+        .arg("--version")
+        .arg("11.0.2")
+        .assert()
+        .success();
+
+    // Resolve dependencies (hermetic, completely offline, with empty BERU_HOME)
+    let mut cmd = assert_cmd::Command::cargo_bin("beru").unwrap();
+    cmd.current_dir(&engine_dir)
+        .env("BERU_HOME", p.beru_home())
+        .arg("resolve")
+        .assert()
+        .success();
+
+    let lock = fs::read_to_string(engine_dir.join("Beru.lock")).unwrap();
+    assert!(lock.contains("fmt"));
+    assert!(lock.contains("11.0.2"));
 }
 
 /// Helper: create a minimal recipe.toml for a header-only test package.

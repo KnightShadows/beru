@@ -17,9 +17,6 @@ fn test_beru_tree() {
         )
         .build();
 
-    // First update the index in our isolated sandbox
-    p.beru("index").arg("update").assert().success();
-
     // Must resolve first to generate the lockfile
     p.beru("resolve").assert().success();
 
