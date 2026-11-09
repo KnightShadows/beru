@@ -37,32 +37,36 @@ pub fn resolve_and_build_locked_dep(
         pkg.source,
     );
 
+    let recipe = resolve_recipe(
+        name,
+        Some(version),
+        project_dir,
+        beru_exe_dir().as_deref(),
+        Some(&cache.recipes_dir()),
+        Some(&cache.index_dir()),
+    )?;
+
     let source_dir = match opt_dep {
         Some(Dependency::Git(_)) | Some(Dependency::Path(_)) => {
             fetch_dependency_source(name, opt_dep.unwrap(), pkg, cache, project_dir)?
         }
         Some(Dependency::Registry(_)) | Some(Dependency::Version(_)) | None => {
-            let recipe = resolve_recipe(
-                name,
-                Some(version),
-                project_dir,
-                beru_exe_dir().as_deref(),
-                Some(&cache.recipes_dir()),
-                Some(&cache.index_dir()),
-            )?;
-
-            if let Some((r, _)) = recipe {
-                let src = r.source;
-                if let Some(url) = src.url {
+            if let Some((ref r, _)) = recipe {
+                let src = &r.source;
+                if let Some(url) = &src.url {
                     if url.ends_with(".tar.gz") || url.ends_with(".tgz") {
-                        let sha = pkg.checksum.clone().or(src.sha256).ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "sha256 checksum missing for tarball of package '{}' ({})",
-                                name,
-                                url
-                            )
-                        })?;
-                        let extracted = beru_recipe::fetch_tarball(cache, &url, &sha)?;
+                        let sha = pkg
+                            .checksum
+                            .clone()
+                            .or_else(|| src.sha256.clone())
+                            .ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "sha256 checksum missing for tarball of package '{}' ({})",
+                                    name,
+                                    url
+                                )
+                            })?;
+                        let extracted = beru_recipe::fetch_tarball(cache, url, &sha)?;
                         beru_recipe::find_source_root(&extracted)?
                     } else {
                         let pin = pkg
@@ -70,15 +74,15 @@ pub fn resolve_and_build_locked_dep(
                             .as_deref()
                             .or(src.tag.as_deref())
                             .or(Some(version));
-                        beru_recipe::fetch_git(cache, &url, pin)?
+                        beru_recipe::fetch_git(cache, url, pin)?
                     }
-                } else if let Some(git) = src.git {
+                } else if let Some(git) = &src.git {
                     let pin = pkg
                         .checksum
                         .as_deref()
                         .or(src.tag.as_deref())
                         .or(Some(version));
-                    beru_recipe::fetch_git(cache, &git, pin)?
+                    beru_recipe::fetch_git(cache, git, pin)?
                 } else {
                     bail!("Recipe for {} has no source", name);
                 }
@@ -90,15 +94,6 @@ pub fn resolve_and_build_locked_dep(
             }
         }
     };
-
-    let recipe = resolve_recipe(
-        name,
-        Some(version),
-        project_dir,
-        beru_exe_dir().as_deref(),
-        Some(&cache.recipes_dir()),
-        Some(&cache.index_dir()),
-    )?;
 
     println!("  {} {}...", style("Building").green().bold(), name,);
 

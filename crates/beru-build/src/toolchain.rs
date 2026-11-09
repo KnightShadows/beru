@@ -83,8 +83,8 @@ pub fn generate_toolchain_cmake(
             escaped
         ));
         content.push_str(&format!(
-            "    target_link_directories(${{TARGET_NAME}} PRIVATE \"{}/lib\")\n",
-            escaped
+            "    target_link_directories(${{TARGET_NAME}} PRIVATE \"{}/lib\" \"{}/lib64\")\n",
+            escaped, escaped
         ));
     }
 
@@ -149,5 +149,6 @@ mod tests {
         assert!(content.contains("CMAKE_CXX_STANDARD 20"));
         assert!(content.contains("Release"));
         assert!(content.contains("fmt-11.0.2"));
+        assert!(content.contains("lib64"));
     }
 }
