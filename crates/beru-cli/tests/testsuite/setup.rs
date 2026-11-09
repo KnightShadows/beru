@@ -11,6 +11,8 @@ fn test_beru_setup_help_displays_flags() {
         .success()
         .stdout(predicate::str::contains("--check"))
         .stdout(predicate::str::contains("--install-prereqs"))
+        .stdout(predicate::str::contains("--no-install"))
+        .stdout(predicate::str::contains("--yes"))
         .stdout(predicate::str::contains("--add-to-path"));
 }
 

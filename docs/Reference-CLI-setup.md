@@ -21,8 +21,10 @@ beru setup [OPTIONS]
 
 ### Options
 
-* `--check`: Runs the diagnostic check and exits with code `0` if all required prerequisites are satisfied, or code `1` if any required tool is missing. Ideal for CI pipelines and install scripts.
-* `--install-prereqs`: Displays and runs automated package manager installation commands for missing tools (`apt-get`, `dnf`, `pacman`, `brew`, `winget`).
+* `--check`: Runs the diagnostic check and exits with code `0` if all required prerequisites are satisfied, or code `1` if any required tool is missing. Ideal for CI pipelines and install scripts (will not attempt installation).
+* `--install-prereqs`: Automatically downloads and installs missing prerequisites without interactive prompts.
+* `--no-install`: Displays the diagnostic table and manual instructions without attempting or prompting for automated installation.
+* `-y, --yes`: Automatically accepts all installation prompts.
 * `--add-to-path`: Automatically adds `~/.beru/bin` to the user's persistent environment `PATH` (via Windows registry or Unix shell profile files like `~/.bashrc`, `~/.zshrc`, `~/.profile`).
 
 ---

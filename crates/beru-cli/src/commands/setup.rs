@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use console::style;
+use std::io::{self, IsTerminal, Write};
 use std::process::Command;
 
 /// Arguments for `beru setup`.
@@ -10,9 +11,17 @@ pub struct SetupArgs {
     #[arg(long)]
     pub check: bool,
 
-    /// Show or execute installation commands for missing prerequisites
+    /// Automatically install missing prerequisites without prompting
     #[arg(long = "install-prereqs")]
     pub install_prereqs: bool,
+
+    /// Do not attempt to install missing prerequisites
+    #[arg(long = "no-install")]
+    pub no_install: bool,
+
+    /// Automatically accept all installation prompts
+    #[arg(short = 'y', long = "yes")]
+    pub yes: bool,
 
     /// Add ~/.beru/bin to user PATH environment variable
     #[arg(long = "add-to-path")]
@@ -25,6 +34,24 @@ struct ToolCheck {
     required: bool,
     found: bool,
     details: String,
+}
+
+fn prompt_confirm(prompt: &str, default_yes: bool) -> bool {
+    let suffix = if default_yes { "[Y/n]" } else { "[y/N]" };
+    print!("{} {} ", prompt, suffix);
+    let _ = io::stdout().flush();
+
+    let mut input = String::new();
+    if io::stdin().read_line(&mut input).is_err() {
+        return default_yes;
+    }
+
+    let trimmed = input.trim().to_lowercase();
+    if trimmed.is_empty() {
+        return default_yes;
+    }
+
+    trimmed == "y" || trimmed == "yes"
 }
 
 /// Execute the `beru setup` command.
@@ -91,6 +118,8 @@ pub fn exec(args: SetupArgs) -> Result<()> {
 
     let missing_required: Vec<&ToolCheck> =
         checks.iter().filter(|c| c.required && !c.found).collect();
+    let missing_optional: Vec<&ToolCheck> =
+        checks.iter().filter(|c| !c.required && !c.found).collect();
 
     if !missing_required.is_empty() {
         println!(
@@ -99,25 +128,89 @@ pub fn exec(args: SetupArgs) -> Result<()> {
         );
         print_remediation(&missing_required);
 
-        if args.install_prereqs {
-            run_prereq_install()?;
-        }
-
         if args.check {
             bail!("Prerequisites check failed: missing required C++ tools");
         }
+
+        let should_install = if args.no_install {
+            false
+        } else if args.install_prereqs || args.yes {
+            true
+        } else if io::stdin().is_terminal() {
+            prompt_confirm(
+                "Would you like Beru to automatically download and install the missing prerequisites?",
+                true,
+            )
+        } else {
+            false
+        };
+
+        if should_install {
+            println!(
+                "\n{} Downloading and installing missing prerequisites...\n",
+                style("Setting up:").cyan().bold()
+            );
+            run_prereq_install(&checks)?;
+
+            println!(
+                "\n{} Re-evaluating environment after installation...\n",
+                style("Checking:").cyan().bold()
+            );
+
+            let rechecks = vec![
+                check_git(),
+                check_cmake(),
+                check_compiler(),
+                check_ninja(),
+                check_path(),
+            ];
+
+            for check in &rechecks {
+                let status_str = if check.found {
+                    style("[OK]").green().bold()
+                } else if check.required {
+                    style("[FAIL]").red().bold()
+                } else {
+                    style("[WARN]").yellow().bold()
+                };
+
+                println!(
+                    "  {:<15} {:<8} {}",
+                    style(check.name).bold(),
+                    status_str,
+                    check.details
+                );
+            }
+            println!();
+
+            let still_missing: Vec<&ToolCheck> =
+                rechecks.iter().filter(|c| c.required && !c.found).collect();
+            if still_missing.is_empty() {
+                println!(
+                    "{} All required prerequisites are met! You are ready to build with Beru.\n",
+                    style("Success:").green().bold()
+                );
+            } else {
+                println!(
+                    "{} Some tools could not be automatically installed. Please review the manual steps above.\n",
+                    style("Notice:").yellow().bold()
+                );
+            }
+        } else if !args.no_install {
+            println!(
+                "  -> Run {} to automatically download and install missing prerequisites.\n",
+                style("beru setup --install-prereqs").cyan().bold()
+            );
+        }
         return Ok(());
     }
-
-    let missing_optional: Vec<&ToolCheck> =
-        checks.iter().filter(|c| !c.required && !c.found).collect();
 
     if !missing_optional.is_empty() {
         println!(
             "{} All required tools are present, but some recommended tools are missing.",
             style("Notice:").yellow().bold()
         );
-        for item in missing_optional {
+        for item in &missing_optional {
             if item.name == "PATH" {
                 println!(
                     "  -> Run {} to add ~/.beru/bin to your PATH.",
@@ -128,6 +221,10 @@ pub fn exec(args: SetupArgs) -> Result<()> {
             }
         }
         println!();
+
+        if (args.install_prereqs || args.yes) && !args.no_install && !args.check {
+            run_prereq_install(&checks)?;
+        }
     } else {
         println!(
             "{} All prerequisites are met! You are ready to build with Beru.\n",
@@ -385,59 +482,211 @@ fn print_remediation(_missing: &[&ToolCheck]) {
     println!();
 }
 
-fn run_prereq_install() -> Result<()> {
+fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
-        println!("Attempting automated installation via winget...");
-        let mut cmd = Command::new("winget");
-        cmd.args([
-            "install",
-            "--id",
-            "Kitware.CMake",
-            "-e",
-            "--accept-package-agreements",
-            "--accept-source-agreements",
-        ]);
-        let _ = cmd.status();
-        let mut cmd = Command::new("winget");
-        cmd.args([
-            "install",
-            "--id",
-            "Git.Git",
-            "-e",
-            "--accept-package-agreements",
-            "--accept-source-agreements",
-        ]);
-        let _ = cmd.status();
-        let mut cmd = Command::new("winget");
-        cmd.args([
-            "install",
-            "--id",
-            "Ninja-build.Ninja",
-            "-e",
-            "--accept-package-agreements",
-            "--accept-source-agreements",
-        ]);
-        let _ = cmd.status();
+        if which::which("winget").is_err() {
+            println!(
+                "{} 'winget' was not found on PATH. Please install the App Installer from the Microsoft Store or install tools manually using the commands above.",
+                style("Notice:").yellow().bold()
+            );
+            return Ok(());
+        }
+
+        println!(
+            "{} Automated installation via Windows Package Manager (winget)...",
+            style("Progress:").cyan().bold()
+        );
+
+        for check in checks {
+            if check.found {
+                continue;
+            }
+
+            match check.name {
+                "git" => {
+                    println!("  {} Git for Windows...", style("Installing").cyan().bold());
+                    let mut cmd = Command::new("winget");
+                    cmd.args([
+                        "install",
+                        "--id",
+                        "Git.Git",
+                        "-e",
+                        "--accept-package-agreements",
+                        "--accept-source-agreements",
+                    ]);
+                    let _ = cmd.status();
+                }
+                "cmake" => {
+                    println!("  {} Kitware CMake...", style("Installing").cyan().bold());
+                    let mut cmd = Command::new("winget");
+                    cmd.args([
+                        "install",
+                        "--id",
+                        "Kitware.CMake",
+                        "-e",
+                        "--accept-package-agreements",
+                        "--accept-source-agreements",
+                    ]);
+                    let _ = cmd.status();
+                }
+                "ninja" => {
+                    println!(
+                        "  {} Ninja Build System...",
+                        style("Installing").cyan().bold()
+                    );
+                    let mut cmd = Command::new("winget");
+                    cmd.args([
+                        "install",
+                        "--id",
+                        "Ninja-build.Ninja",
+                        "-e",
+                        "--accept-package-agreements",
+                        "--accept-source-agreements",
+                    ]);
+                    let _ = cmd.status();
+                }
+                "C++ compiler" => {
+                    println!(
+                        "  {} LLVM Clang C++ Compiler...",
+                        style("Installing").cyan().bold()
+                    );
+                    let mut cmd = Command::new("winget");
+                    cmd.args([
+                        "install",
+                        "--id",
+                        "LLVM.LLVM",
+                        "-e",
+                        "--accept-package-agreements",
+                        "--accept-source-agreements",
+                    ]);
+                    let status = cmd.status();
+                    if status.is_err() || !status.as_ref().map(|s| s.success()).unwrap_or(false) {
+                        println!(
+                            "  {} Alternatively, install Visual Studio C++ Build Tools with:\n    winget install Microsoft.VisualStudio.2022.BuildTools --override \"--passive --add Microsoft.VisualStudio.Workload.VCTools\"",
+                            style("Note:").yellow().bold()
+                        );
+                    }
+                }
+                "PATH" => {
+                    println!(
+                        "  {} User PATH environment variable...",
+                        style("Configuring").cyan().bold()
+                    );
+                    let _ = add_beru_to_path();
+                }
+                _ => {}
+            }
+        }
         Ok(())
     }
 
     #[cfg(target_os = "macos")]
     {
-        println!("Attempting automated installation via brew...");
-        let status = Command::new("brew")
-            .args(["install", "cmake", "ninja", "git", "gcc"])
-            .status()
-            .context("failed to invoke brew")?;
-        if !status.success() {
-            bail!("brew install exited with error code");
+        let has_xcode_tools = Command::new("xcode-select")
+            .arg("-p")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if !has_xcode_tools {
+            println!(
+                "  {} Xcode Command Line Tools...",
+                style("Triggering").cyan().bold()
+            );
+            let _ = Command::new("xcode-select").arg("--install").status();
+        }
+
+        if which::which("brew").is_ok() {
+            let mut pkgs = Vec::new();
+            for check in checks {
+                if check.found {
+                    continue;
+                }
+                match check.name {
+                    "git" => pkgs.push("git"),
+                    "cmake" => pkgs.push("cmake"),
+                    "ninja" => pkgs.push("ninja"),
+                    "C++ compiler" if !has_xcode_tools => pkgs.push("gcc"),
+                    "PATH" => {
+                        let _ = add_beru_to_path();
+                    }
+                    _ => {}
+                }
+            }
+
+            if !pkgs.is_empty() {
+                println!(
+                    "  {} missing packages via Homebrew ({})...",
+                    style("Installing").cyan().bold(),
+                    pkgs.join(", ")
+                );
+                let _ = Command::new("brew").arg("install").args(&pkgs).status();
+            }
+        } else {
+            println!(
+                "{} Homebrew ('brew') not found. Please install Homebrew from https://brew.sh",
+                style("Notice:").yellow().bold()
+            );
         }
         Ok(())
     }
 
     #[cfg(target_os = "linux")]
     {
-        println!("Please run the package manager commands printed above with sudo.");
+        println!(
+            "{} Automated package manager installation...",
+            style("Progress:").cyan().bold()
+        );
+
+        let is_root = std::env::var("USER").map(|u| u == "root").unwrap_or(false);
+
+        if which::which("apt-get").is_ok() {
+            println!(
+                "  {} packages via apt-get...",
+                style("Installing").cyan().bold()
+            );
+            let script = if is_root {
+                "apt-get update && apt-get install -y build-essential cmake git ninja-build clang-format"
+            } else {
+                "sudo apt-get update && sudo apt-get install -y build-essential cmake git ninja-build clang-format"
+            };
+            let _ = Command::new("sh").args(["-c", script]).status();
+        } else if which::which("dnf").is_ok() {
+            println!(
+                "  {} packages via dnf...",
+                style("Installing").cyan().bold()
+            );
+            let script = if is_root {
+                "dnf install -y gcc-c++ cmake git ninja-build clang-tools-extra"
+            } else {
+                "sudo dnf install -y gcc-c++ cmake git ninja-build clang-tools-extra"
+            };
+            let _ = Command::new("sh").args(["-c", script]).status();
+        } else if which::which("pacman").is_ok() {
+            println!(
+                "  {} packages via pacman...",
+                style("Installing").cyan().bold()
+            );
+            let script = if is_root {
+                "pacman -S --noconfirm base-devel cmake git ninja clang"
+            } else {
+                "sudo pacman -S --noconfirm base-devel cmake git ninja clang"
+            };
+            let _ = Command::new("sh").args(["-c", script]).status();
+        } else {
+            println!(
+                "{} Supported package manager not detected (apt-get, dnf, pacman). Please install prerequisites manually.",
+                style("Notice:").yellow().bold()
+            );
+        }
+
+        for check in checks {
+            if check.name == "PATH" && !check.found {
+                let _ = add_beru_to_path();
+            }
+        }
+
         Ok(())
     }
 }

@@ -83,8 +83,8 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
 fi
 
 echo "Installation complete!"
-echo "Running initial environment and prerequisite check..."
-"$INSTALL_DIR/$BIN" setup || true
+echo "Running initial environment and prerequisite setup..."
+"$INSTALL_DIR/$BIN" setup --install-prereqs || true
 
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo "Please restart your terminal or run 'source ~/.bashrc' (or shell equivalent) to use Beru."

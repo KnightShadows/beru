@@ -89,9 +89,9 @@ try {
         Write-Host "$InstallDir is already in user PATH." -ForegroundColor Gray
     }
 
-    # 6. Run beru setup to verify C++ prerequisites
-    Write-Host "`nRunning initial environment and prerequisite check..." -ForegroundColor Cyan
-    & $DestExe setup
+    # 6. Run beru setup to verify and automatically configure prerequisites
+    Write-Host "`nRunning initial environment and prerequisite setup..." -ForegroundColor Cyan
+    & $DestExe setup --install-prereqs
 
 } finally {
     Remove-Item -Path $TempDir -Recurse -Force -ErrorAction SilentlyContinue
