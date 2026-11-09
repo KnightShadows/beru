@@ -9,6 +9,7 @@ pub mod clean;
 pub mod index;
 pub mod init;
 pub mod new;
+pub mod remove;
 pub mod resolve;
 pub mod run;
 pub mod test;
@@ -44,6 +45,10 @@ pub enum Command {
     /// Add a dependency to Beru.toml
     Add(add::AddArgs),
 
+    /// Remove a dependency from Beru.toml
+    #[command(alias = "rm")]
+    Remove(remove::RemoveArgs),
+
     /// Display a tree of dependencies
     Tree(tree::TreeArgs),
 
@@ -66,6 +71,7 @@ pub fn run(cmd: Command) -> Result<()> {
         Command::Clean(args) => clean::exec(args),
         Command::Cache(args) => cache::exec(args),
         Command::Add(args) => add::exec(args),
+        Command::Remove(args) => remove::exec(args),
         Command::Tree(args) => tree::exec(args),
         Command::Check(args) => check::exec(args),
         Command::Test(args) => test::exec(args),
