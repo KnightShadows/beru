@@ -67,6 +67,7 @@ The following table provides a high-level overview of the available subcommands.
 | **[`beru index update`](Reference-CLI-index-update.md)** | Maintenance | Synchronizes the local clone of the package registry with the upstream Git repository. |
 | **[`beru cache`](Reference-CLI-cache.md)** | Maintenance | Manage the global binary cache: view disk usage (`beru cache size`) or clean cached data (`beru cache clean`). |
 | **[`beru clean`](Reference-CLI-clean.md)** | Maintenance | Removes the `build/` directory and generated CMake files (`beru-toolchain.cmake`, `beru-override.cmake`), restoring the project to a pristine state. |
+| **[`beru search`](Reference-CLI-search.md)** | Discovery | Searches for packages across the registry index, bundled recipes, and embedded packages. |
 | **[`beru recipe`](Reference-CLI-recipe.md)** | Tooling | Scaffolds (`beru recipe init`) and audits (`beru recipe lint`) package recipe definitions. |
 | **[`beru self-update`](Reference-CLI-self-update.md)** | Maintenance | Downloads and installs the latest official release binary, replacing the current binary in place. |
 | **[`beru setup`](Reference-CLI-setup.md)** | Environment | Inspects and automates setup of host C++ toolchain prerequisites (git, cmake, compiler, ninja, PATH). |

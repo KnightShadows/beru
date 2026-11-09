@@ -12,6 +12,7 @@ mod recipe;
 mod remove;
 mod resolve;
 mod run;
+mod search;
 mod self_update;
 mod setup;
 mod support;

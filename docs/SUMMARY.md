@@ -32,6 +32,7 @@
   * [`beru cache`](Reference-CLI-cache.md)
   * [`beru clean`](Reference-CLI-clean.md)
   * [`beru recipe`](Reference-CLI-recipe.md)
+  * [`beru search`](Reference-CLI-search.md)
   * [`beru self-update`](Reference-CLI-self-update.md)
   * [`beru setup`](Reference-CLI-setup.md)
 

@@ -15,6 +15,7 @@ pub mod recipe;
 pub mod remove;
 pub mod resolve;
 pub mod run;
+pub mod search;
 pub mod self_update;
 pub mod setup;
 pub mod test;
@@ -79,6 +80,9 @@ pub enum Command {
     /// Author and validate recipe definitions
     Recipe(recipe::RecipeArgs),
 
+    /// Search packages in the registry and recipes
+    Search(search::SearchArgs),
+
     /// Update the Beru binary to the latest release
     #[command(name = "self-update")]
     SelfUpdate(self_update::SelfUpdateArgs),
@@ -108,6 +112,7 @@ pub fn run(cmd: Command) -> Result<()> {
         Command::Install(args) => install::exec_install(args),
         Command::Uninstall(args) => install::exec_uninstall(args),
         Command::Recipe(args) => recipe::exec(args),
+        Command::Search(args) => search::exec(args),
         Command::SelfUpdate(args) => self_update::exec(args),
         Command::Setup(args) => setup::exec(args),
     }
