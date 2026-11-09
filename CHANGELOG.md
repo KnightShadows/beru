@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **Windows & Unix Installers**: Introduced `install.ps1` for PowerShell on Windows (installs to `~/.beru/bin`, sets User `PATH`, runs `beru setup`) and updated `install.sh` for Linux/macOS.
 
 #### Dependency Lifecycle & Discovery
+* **`beru fmt`**: Automatically formats all C++ project and workspace source files (`.cpp`, `.hpp`, `.cc`, `.cxx`, `.h`, `.c`) in place or checks formatting (`--check`) using `clang-format`.
 * **`beru search <query>`**: Search for packages by name and description across the local registry index (`~/.beru/index/`), bundled recipes, and embedded fallbacks.
 * **`beru remove <pkg>` / `beru rm`**: Cleanly drop dependencies from `Beru.toml` using AST-preserving edits, automatically re-syncing `Beru.lock`.
 * **`beru update [pkg]`**: Re-resolve and advance locked dependencies to their highest semver-compatible releases.

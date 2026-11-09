@@ -24,6 +24,7 @@
   * [`beru tree`](Reference-CLI-tree.md)
   * [`beru resolve`](Reference-CLI-resolve.md)
   * [`beru check`](Reference-CLI-check.md)
+  * [`beru fmt`](Reference-CLI-fmt.md)
   * [`beru build`](Reference-CLI-build.md)
   * [`beru test`](Reference-CLI-test.md)
   * [`beru run`](Reference-CLI-run.md)

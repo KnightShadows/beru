@@ -216,8 +216,10 @@ beru uninstall asset-baker
 | | `beru outdated` | Display outdated packages compared to the registry |
 | | `beru resolve` | Compute deterministic dependency graph and emit `Beru.lock` |
 | | `beru tree` | Print a visual DAG tree of project dependencies |
+| | `beru search <query>` | Search packages across the registry index and recipes |
 | **Build & Run** | `beru build` | Compile the project and all dependencies |
 | | `beru check` | Rapid syntax-only compilation check bypassing the linker |
+| | `beru fmt` | Format C++ files in place or check with `clang-format` |
 | | `beru run [script]` | Build and execute the target or ad-hoc script |
 | | `beru test` | Build and execute tests in parallel with CTest |
 | | `beru clean` | Remove build artifacts and generated CMake files |

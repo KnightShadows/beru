@@ -2,6 +2,7 @@ mod add;
 mod build;
 mod cache;
 mod check;
+mod fmt;
 mod init;
 mod install;
 mod new;

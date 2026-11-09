@@ -60,6 +60,7 @@ The following table provides a high-level overview of the available subcommands.
 | **[`beru tree`](Reference-CLI-tree.md)** | Analysis | Visualizes the resolved dependency graph using an optimal DAG traversal. |
 | **[`beru resolve`](Reference-CLI-resolve.md)** | Resolution | Executes the PubGrub algorithm to compute a deterministic dependency graph and writes it to `Beru.lock`. |
 | **[`beru check`](Reference-CLI-check.md)** | Orchestration | Performs a fast, syntax-only compilation check bypassing the linker to ensure rapid feedback. |
+| **[`beru fmt`](Reference-CLI-fmt.md)** | Tooling | Formats project C++ source files in place or checks formatting with `clang-format`. |
 | **[`beru build`](Reference-CLI-build.md)** | Orchestration | Resolves, fetches, compiles, and links the entire project and its dependencies. |
 | **[`beru test`](Reference-CLI-test.md)** | Execution | Implicitly builds the project and executes the CTest suite in parallel. |
 | **[`beru run`](Reference-CLI-run.md)** | Execution | A convenience wrapper that invokes `build` and then immediately spawns the resulting executable binary. |

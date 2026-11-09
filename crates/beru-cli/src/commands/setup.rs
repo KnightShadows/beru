@@ -432,7 +432,7 @@ fn run_prereq_install() -> Result<()> {
         if !status.success() {
             bail!("brew install exited with error code");
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]

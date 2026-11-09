@@ -6,6 +6,7 @@ pub mod build;
 pub mod cache;
 pub mod check;
 pub mod clean;
+pub mod fmt;
 pub mod index;
 pub mod init;
 pub mod install;
@@ -80,6 +81,9 @@ pub enum Command {
     /// Author and validate recipe definitions
     Recipe(recipe::RecipeArgs),
 
+    /// Format C++ source files using clang-format
+    Fmt(fmt::FmtArgs),
+
     /// Search packages in the registry and recipes
     Search(search::SearchArgs),
 
@@ -112,6 +116,7 @@ pub fn run(cmd: Command) -> Result<()> {
         Command::Install(args) => install::exec_install(args),
         Command::Uninstall(args) => install::exec_uninstall(args),
         Command::Recipe(args) => recipe::exec(args),
+        Command::Fmt(args) => fmt::exec(args),
         Command::Search(args) => search::exec(args),
         Command::SelfUpdate(args) => self_update::exec(args),
         Command::Setup(args) => setup::exec(args),
