@@ -3,11 +3,42 @@ use std::path::Path;
 use tracing::info;
 
 /// Metadata about a dependency for CMake linking.
+#[derive(Debug, Clone)]
 pub struct CMakeDependency {
     /// The CMake package name to find (e.g. `fmt`).
     pub package_name: Option<String>,
     /// The CMake targets to link (e.g. `fmt::fmt`).
     pub targets: Vec<String>,
+}
+
+/// Metadata about a system dependency for CMake linking.
+#[derive(Debug, Clone)]
+pub struct SystemCMakeDependency {
+    /// The CMake package name to find (e.g. `OpenSSL`, `Threads`).
+    pub package_name: Option<String>,
+    /// The CMake targets to link (e.g. `OpenSSL::SSL`, `Threads::Threads`).
+    pub targets: Vec<String>,
+    /// pkg-config module name (e.g. `zlib`, `openssl`).
+    pub pkg_config: Option<String>,
+    /// Whether this dependency is strictly required.
+    pub required: bool,
+}
+
+/// Options for configuring toolchain generation.
+#[derive(Debug, Clone, Default)]
+pub struct ToolchainConfig<'a> {
+    /// Optimization level string (e.g. `"0"`, `"3"`, `"s"`).
+    pub optimization: Option<&'a str>,
+    /// Warning level (`"strict"`, `"all"`, `"none"`, `"error"`).
+    pub warnings: Option<&'a str>,
+    /// Link-time optimization.
+    pub lto: bool,
+    /// Sanitizers to enable (e.g. `["address", "undefined"]`).
+    pub sanitizers: &'a [String],
+    /// Custom compiler flags.
+    pub flags: &'a [String],
+    /// System dependencies to link.
+    pub system_deps: &'a [SystemCMakeDependency],
 }
 
 /// Generate a `beru-toolchain.cmake` file that wires Beru-managed
@@ -29,6 +60,25 @@ pub fn generate_toolchain_cmake(
     build_type: &str,
     prefix_paths: &[&Path],
     cmake_deps: &[CMakeDependency],
+) -> Result<()> {
+    generate_toolchain_cmake_with_config(
+        output_path,
+        cxx_std,
+        build_type,
+        prefix_paths,
+        cmake_deps,
+        &ToolchainConfig::default(),
+    )
+}
+
+/// Generate a `beru-toolchain.cmake` file with full profile and system dependency configurations.
+pub fn generate_toolchain_cmake_with_config(
+    output_path: &Path,
+    cxx_std: &str,
+    build_type: &str,
+    prefix_paths: &[&Path],
+    cmake_deps: &[CMakeDependency],
+    config: &ToolchainConfig<'_>,
 ) -> Result<()> {
     let cxx_standard_number = cxx_std_to_number(cxx_std);
 
@@ -55,6 +105,66 @@ pub fn generate_toolchain_cmake(
         "set(CMAKE_BUILD_TYPE {} CACHE STRING \"Build type (set by Beru)\")\n\n",
         cmake_build_type
     ));
+
+    if let Some(warnings) = config.warnings {
+        content.push_str("# Compiler warning flags (configured by Beru profile)\n");
+        match warnings {
+            "strict" => {
+                content.push_str("if(MSVC)\n    add_compile_options(/W4)\nelse()\n    add_compile_options(-Wall -Wextra -Wpedantic)\nendif()\n\n");
+            }
+            "all" => {
+                content.push_str("if(MSVC)\n    add_compile_options(/W3)\nelse()\n    add_compile_options(-Wall)\nendif()\n\n");
+            }
+            "error" => {
+                content.push_str("if(MSVC)\n    add_compile_options(/WX)\nelse()\n    add_compile_options(-Werror)\nendif()\n\n");
+            }
+            "none" => {
+                content.push_str("if(MSVC)\n    add_compile_options(/w)\nelse()\n    add_compile_options(-w)\nendif()\n\n");
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(opt) = config.optimization {
+        content.push_str("# Optimization flags (configured by Beru profile)\n");
+        let (msvc_opt, gnu_opt) = match opt {
+            "0" => ("/Od", "-O0"),
+            "1" => ("/O1", "-O1"),
+            "2" => ("/O2", "-O2"),
+            "3" => ("/Ox", "-O3"),
+            "s" => ("/Os", "-Os"),
+            "z" => ("/Os", "-Oz"),
+            _ => ("", ""),
+        };
+        if !msvc_opt.is_empty() {
+            content.push_str(&format!(
+                "if(MSVC)\n    add_compile_options({})\nelse()\n    add_compile_options({})\nendif()\n\n",
+                msvc_opt, gnu_opt
+            ));
+        }
+    }
+
+    if config.lto {
+        content.push_str("# Link-time optimization (configured by Beru profile)\n");
+        content.push_str("set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE CACHE BOOL \"\" FORCE)\n\n");
+    }
+
+    if !config.sanitizers.is_empty() {
+        let san_list = config.sanitizers.join(",");
+        content.push_str("# Sanitizers (configured by Beru profile)\n");
+        content.push_str(&format!(
+            "if(NOT MSVC)\n    add_compile_options(-fsanitize={0} -fno-omit-frame-pointer)\n    add_link_options(-fsanitize={0})\nelse()\n    add_compile_options(/fsanitize=address)\nendif()\n\n",
+            san_list
+        ));
+    }
+
+    if !config.flags.is_empty() {
+        content.push_str("# Custom compiler flags (configured by Beru profile)\n");
+        for flag in config.flags {
+            content.push_str(&format!("add_compile_options(\"{}\")\n", flag));
+        }
+        content.push('\n');
+    }
 
     if !prefix_paths.is_empty() {
         content.push_str("# Beru-managed dependency install prefixes\n");
@@ -102,6 +212,34 @@ pub fn generate_toolchain_cmake(
             ));
         }
     }
+
+    if !config.system_deps.is_empty() {
+        content.push_str("    # System dependencies\n");
+        for (i, sys_dep) in config.system_deps.iter().enumerate() {
+            let req_str = if sys_dep.required {
+                "REQUIRED"
+            } else {
+                "QUIET"
+            };
+            if let Some(ref pkg) = sys_dep.package_name {
+                content.push_str(&format!("    find_package({} {})\n", pkg, req_str));
+            }
+            if let Some(ref mod_name) = sys_dep.pkg_config {
+                let id = format!("BERU_SYS_{}", i);
+                content.push_str(&format!(
+                    "    find_package(PkgConfig QUIET)\n    if(PKG_CONFIG_FOUND)\n        pkg_check_modules({} {} {})\n        if({}_FOUND)\n            target_include_directories(${{TARGET_NAME}} PRIVATE ${{{}_INCLUDE_DIRS}})\n            target_link_libraries(${{TARGET_NAME}} PRIVATE ${{{}_LIBRARIES}})\n        endif()\n    endif()\n",
+                    id, req_str, mod_name, id, id, id
+                ));
+            }
+            for target in &sys_dep.targets {
+                content.push_str(&format!(
+                    "    target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n",
+                    target
+                ));
+            }
+        }
+    }
+
     content.push_str("endmacro()\n\n");
 
     std::fs::write(output_path, &content)
@@ -150,5 +288,47 @@ mod tests {
         assert!(content.contains("Release"));
         assert!(content.contains("fmt-11.0.2"));
         assert!(content.contains("lib64"));
+    }
+
+    #[test]
+    fn test_generate_toolchain_with_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("beru-toolchain.cmake");
+        let sanitizers = vec!["address".to_string(), "undefined".to_string()];
+        let flags = vec!["-fno-omit-frame-pointer".to_string()];
+        let sys_deps = vec![
+            SystemCMakeDependency {
+                package_name: Some("Threads".to_string()),
+                targets: vec!["Threads::Threads".to_string()],
+                pkg_config: None,
+                required: true,
+            },
+            SystemCMakeDependency {
+                package_name: None,
+                targets: vec![],
+                pkg_config: Some("zlib".to_string()),
+                required: true,
+            },
+        ];
+        let config = ToolchainConfig {
+            optimization: Some("3"),
+            warnings: Some("strict"),
+            lto: true,
+            sanitizers: &sanitizers,
+            flags: &flags,
+            system_deps: &sys_deps,
+        };
+
+        generate_toolchain_cmake_with_config(&path, "c++20", "release", &[], &[], &config).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("-Wall -Wextra -Wpedantic"));
+        assert!(content.contains("/W4"));
+        assert!(content.contains("CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE"));
+        assert!(content.contains("-fsanitize=address,undefined"));
+        assert!(content.contains("-fno-omit-frame-pointer"));
+        assert!(content.contains("find_package(Threads REQUIRED)"));
+        assert!(content.contains("Threads::Threads"));
+        assert!(content.contains("pkg_check_modules(BERU_SYS_1 REQUIRED zlib)"));
     }
 }

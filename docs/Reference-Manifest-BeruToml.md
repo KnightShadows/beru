@@ -64,6 +64,26 @@ Libraries listed here are **only** compiled when building or testing the current
 gtest = { git = "https://github.com/google/googletest.git", tag = "v1.15.0" }
 ```
 
+### 2.3. Host Environment: `[system-dependencies]`
+
+In addition to source-built third-party dependencies, modern C++ applications often depend on libraries provided directly by the host operating system or system package manager (e.g. `Threads`, `OpenSSL`, `zlib`).
+
+The `[system-dependencies]` table allows you to declare host libraries that should be located via CMake's `find_package` or `pkg-config` and linked automatically:
+
+```toml
+[system-dependencies]
+threads = "Threads"
+openssl = { cmake = "OpenSSL", targets = ["OpenSSL::SSL", "OpenSSL::Crypto"] }
+zlib = { pkg-config = "zlib" }
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `cmake` | String | No | CMake package name to search for using `find_package(<name>)`. |
+| `targets` | Array of Strings | No | CMake targets to link via `beru_link_dependencies`. Defaults to `<cmake>::<cmake>`. |
+| `pkg-config` | String | No | Module name to check using `pkg-config`. Injects include directories and linker libraries. |
+| `required` | Boolean | No | Whether finding this dependency is mandatory (default: `true`). |
+
 ---
 
 ## 3. The `[build]` Section
@@ -93,20 +113,25 @@ While Beru handles standard CMake build types automatically, you can declare exp
 
 | Field | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `optimization` | String | *Compiler Default* | The optimization level: `"0"`, `"1"`, `"2"`, `"3"`, `"s"` (size), `"z"` (extreme size). |
+| `optimization` | String or Integer | *Compiler Default* | The optimization level: `0`, `1`, `2`, `3`, `"s"` (size), `"z"` (extreme size). Also accepted as `opt-level`. |
+| `warnings` | String | *Compiler Default* | Warning level: `"none"`, `"all"`, `"strict"` (e.g. `-Wall -Wextra -Wpedantic` on GCC/Clang or `/W4` on MSVC), or `"error"`. |
 | `lto` | Boolean | `false` | Enables Link-Time Optimization (LTO). This dramatically increases link times but allows the compiler to inline functions across translation units, yielding significant performance gains. |
-| `sanitizers` | Array of Strings | `[]` | Injects Clang/GCC sanitizer flags (e.g., `-fsanitize=address`). |
+| `sanitizers` | Array of Strings | `[]` | Injects Clang/GCC sanitizer flags (e.g., `["address", "undefined"]`). |
+| `flags` | Array of Strings | `[]` | Arbitrary custom compiler flags injected into CMake (e.g. `["-DAPP_FEATURE=1"]`). |
 
 ### 4.1. Example Configuration
 
 ```toml
 [profile.debug]
-optimization = "0"
+opt-level = 0
+warnings = "strict"
+flags = ["-DDEBUG_BUILD"]
 sanitizers = ["address", "undefined"]
 
 [profile.release]
-optimization = "3"
+opt-level = 3
 lto = true
+warnings = "all"
 ```
 
 When invoking a release build, Beru will read the `[profile.release]` table and translate `optimization = "3"` into the appropriate compiler-specific flag (`-O3` for GCC/Clang, or `/O2` for MSVC), while simultaneously instructing the linker to perform inter-procedural optimization (`lto = true`).

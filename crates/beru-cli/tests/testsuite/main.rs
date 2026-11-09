@@ -7,6 +7,7 @@ mod install;
 mod new;
 mod offline;
 mod outdated;
+mod profile;
 mod remove;
 mod resolve;
 mod run;

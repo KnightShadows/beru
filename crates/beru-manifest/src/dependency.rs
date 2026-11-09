@@ -125,6 +125,106 @@ impl Dependency {
     }
 }
 
+/// A system dependency provided by the host environment or CMake/pkg-config.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum SystemDependency {
+    /// Shorthand string representing CMake package name or module name.
+    ///
+    /// ```toml
+    /// threads = "Threads"
+    /// ```
+    Simple(String),
+
+    /// Detailed table configuration.
+    ///
+    /// ```toml
+    /// openssl = { cmake = "OpenSSL", targets = ["OpenSSL::SSL", "OpenSSL::Crypto"] }
+    /// zlib = { pkg-config = "zlib" }
+    /// ```
+    Detailed(SystemDependencyDetail),
+}
+
+/// Detailed configuration for a system dependency.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct SystemDependencyDetail {
+    /// CMake find_package name (e.g. `"OpenSSL"`, `"Threads"`, `"ZLIB"`).
+    #[serde(default)]
+    pub cmake: Option<String>,
+
+    /// CMake targets to link (e.g. `["OpenSSL::SSL", "OpenSSL::Crypto"]`).
+    #[serde(default)]
+    pub targets: Vec<String>,
+
+    /// pkg-config module name (e.g. `"zlib"`, `"openssl"`).
+    #[serde(default, rename = "pkg-config")]
+    pub pkg_config: Option<String>,
+
+    /// Optional version requirement string.
+    #[serde(default)]
+    pub version: Option<String>,
+
+    /// Whether this system dependency is required to find at configuration time.
+    #[serde(default = "default_true")]
+    pub required: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl SystemDependency {
+    /// Return the CMake package name, if specified or inferred.
+    pub fn cmake_package(&self) -> Option<String> {
+        match self {
+            Self::Simple(s) => Some(s.clone()),
+            Self::Detailed(d) => d.cmake.clone(),
+        }
+    }
+
+    /// Return the CMake targets to link against.
+    pub fn cmake_targets(&self, key: &str) -> Vec<String> {
+        match self {
+            Self::Simple(s) => {
+                if s.eq_ignore_ascii_case("threads") {
+                    vec!["Threads::Threads".to_string()]
+                } else {
+                    vec![format!("{}::{}", s, s)]
+                }
+            }
+            Self::Detailed(d) => {
+                if !d.targets.is_empty() {
+                    d.targets.clone()
+                } else if let Some(ref c) = d.cmake {
+                    if c.eq_ignore_ascii_case("threads") {
+                        vec!["Threads::Threads".to_string()]
+                    } else {
+                        vec![format!("{}::{}", c, c)]
+                    }
+                } else {
+                    vec![key.to_string()]
+                }
+            }
+        }
+    }
+
+    /// Return the pkg-config module name, if any.
+    pub fn pkg_config(&self) -> Option<&str> {
+        match self {
+            Self::Simple(_) => None,
+            Self::Detailed(d) => d.pkg_config.as_deref(),
+        }
+    }
+
+    /// Whether this dependency is strictly required.
+    pub fn is_required(&self) -> bool {
+        match self {
+            Self::Simple(_) => true,
+            Self::Detailed(d) => d.required,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,5 +274,36 @@ tag = "11.0.2""#;
             package_type: None,
         });
         assert_eq!(path_dep.source_display(), "path: ../my-dep");
+    }
+
+    #[test]
+    fn test_system_dependency_simple() {
+        #[derive(Deserialize)]
+        struct Wrapper {
+            threads: SystemDependency,
+        }
+        let toml = r#"threads = "Threads""#;
+        let w: Wrapper = toml::from_str(toml).unwrap();
+        let dep = w.threads;
+        assert_eq!(dep.cmake_package().as_deref(), Some("Threads"));
+        assert_eq!(dep.cmake_targets("threads"), vec!["Threads::Threads"]);
+        assert!(dep.is_required());
+    }
+
+    #[test]
+    fn test_system_dependency_detailed() {
+        let toml = r#"
+cmake = "OpenSSL"
+targets = ["OpenSSL::SSL", "OpenSSL::Crypto"]
+pkg-config = "openssl"
+"#;
+        let dep: SystemDependency = toml::from_str(toml).unwrap();
+        assert_eq!(dep.cmake_package().as_deref(), Some("OpenSSL"));
+        assert_eq!(
+            dep.cmake_targets("openssl"),
+            vec!["OpenSSL::SSL", "OpenSSL::Crypto"]
+        );
+        assert_eq!(dep.pkg_config(), Some("openssl"));
+        assert!(dep.is_required());
     }
 }

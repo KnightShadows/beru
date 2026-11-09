@@ -26,6 +26,10 @@ pub struct BeruManifest {
     /// `[profile.*]` — build profiles (debug, release, etc.).
     #[serde(default)]
     pub profile: BTreeMap<String, Profile>,
+
+    /// `[system-dependencies]` — packages provided by the host environment or CMake/pkg-config.
+    #[serde(default, rename = "system-dependencies")]
+    pub system_dependencies: BTreeMap<String, crate::dependency::SystemDependency>,
 }
 
 /// `[package]` table.
@@ -131,12 +135,31 @@ impl std::fmt::Display for BuildSystem {
     }
 }
 
-/// `[profile.<name>]` table (e.g. `[profile.release]`).
+/// Optimization level specification.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum OptLevel {
+    /// Numeric optimization level (0, 1, 2, 3).
+    Num(u32),
+    /// String optimization level ("0", "1", "2", "3", "s", "z", "fast").
+    Str(String),
+}
+
+impl std::fmt::Display for OptLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Num(n) => write!(f, "{}", n),
+            Self::Str(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+/// `[profile.<name>]` table (e.g. `[profile.release]`, `[profile.dev]`).
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Profile {
     /// Optimization level: `"0"`, `"1"`, `"2"`, `"3"`, `"s"`, `"z"`.
-    #[serde(default)]
-    pub optimization: Option<String>,
+    #[serde(default, alias = "opt-level")]
+    pub optimization: Option<OptLevel>,
 
     /// Enable link-time optimization.
     #[serde(default)]
@@ -145,6 +168,14 @@ pub struct Profile {
     /// Sanitizers to enable (e.g. `["address", "undefined"]`).
     #[serde(default)]
     pub sanitizers: Vec<String>,
+
+    /// Compiler warnings level: `"none"`, `"all"`, `"strict"`, `"error"`.
+    #[serde(default)]
+    pub warnings: Option<String>,
+
+    /// Custom compiler flags (e.g. `["-fno-omit-frame-pointer"]`).
+    #[serde(default)]
+    pub flags: Vec<String>,
 }
 
 fn default_cxx_std() -> String {
@@ -280,14 +311,20 @@ my-dep = { path = "../my-dep" }
 [dev-dependencies]
 gtest = { git = "https://github.com/google/googletest", tag = "v1.15.0" }
 
+[system-dependencies]
+threads = "Threads"
+openssl = { cmake = "OpenSSL", targets = ["OpenSSL::SSL", "OpenSSL::Crypto"] }
+
 [build]
 system = "cmake"
 cmake-minimum = "3.20"
 shared-libs = false
 
 [profile.release]
-optimization = "3"
+opt-level = 3
 lto = true
+warnings = "strict"
+flags = ["-fno-omit-frame-pointer"]
 
 [profile.debug]
 optimization = "0"
@@ -298,7 +335,15 @@ sanitizers = ["address", "undefined"]
         assert_eq!(manifest.package.package_type, PackageType::Executable);
         assert_eq!(manifest.dependencies.len(), 2);
         assert_eq!(manifest.dev_dependencies.len(), 1);
+        assert_eq!(manifest.system_dependencies.len(), 2);
         assert!(manifest.profile.contains_key("release"));
+        let rel_prof = &manifest.profile["release"];
+        assert_eq!(
+            rel_prof.optimization.as_ref().map(|o| o.to_string()),
+            Some("3".to_string())
+        );
+        assert_eq!(rel_prof.warnings.as_deref(), Some("strict"));
+        assert_eq!(rel_prof.flags, vec!["-fno-omit-frame-pointer"]);
         assert!(manifest.profile.contains_key("debug"));
     }
 

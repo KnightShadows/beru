@@ -6,7 +6,7 @@ use tracing::{debug, info};
 
 use crate::commands::build::resolve_target;
 use beru_build::resolve_and_build_locked_dep;
-use beru_build::{build_project, generate_toolchain_cmake};
+use beru_build::{build_project, generate_toolchain_cmake_with_config};
 use beru_core::cache::BeruCache;
 use beru_core::toolchain;
 use beru_manifest::BeruManifest;
@@ -49,8 +49,8 @@ pub fn exec(args: CheckArgs) -> Result<()> {
         let cmakelists_path = project_dir.join("CMakeLists.txt");
         if !cmakelists_path.exists() {
             let cmake_content = format!(
-                "cmake_minimum_required(VERSION 3.20)\nproject({} LANGUAGES CXX)\n\nadd_executable({} src/{}.cpp)\n",
-                target_stem, target_stem, target_stem
+                "cmake_minimum_required(VERSION 3.20)\nproject({} LANGUAGES CXX)\n\nadd_executable({} src/{}.cpp)\nif(COMMAND beru_link_dependencies)\n    beru_link_dependencies({})\nendif()\n",
+                resolved_target_name, resolved_target_name, target_stem, resolved_target_name
             );
             std::fs::write(cmakelists_path, cmake_content)
                 .context("failed to write dynamic CMakeLists.txt")?;
@@ -158,14 +158,42 @@ pub fn exec(args: CheckArgs) -> Result<()> {
         });
     }
 
+    let profile_cfg = manifest.profile.get(&args.profile);
+    let opt_str = profile_cfg.and_then(|p| p.optimization.as_ref().map(|o| o.to_string()));
+    let warnings = profile_cfg.and_then(|p| p.warnings.as_deref());
+    let lto = profile_cfg.map(|p| p.lto).unwrap_or(false);
+    let sanitizers = profile_cfg.map(|p| p.sanitizers.as_slice()).unwrap_or(&[]);
+    let flags = profile_cfg.map(|p| p.flags.as_slice()).unwrap_or(&[]);
+
+    let sys_deps: Vec<beru_build::SystemCMakeDependency> = manifest
+        .system_dependencies
+        .iter()
+        .map(|(name, dep)| beru_build::SystemCMakeDependency {
+            package_name: dep.cmake_package(),
+            targets: dep.cmake_targets(name),
+            pkg_config: dep.pkg_config().map(|s| s.to_string()),
+            required: dep.is_required(),
+        })
+        .collect();
+
+    let toolchain_config = beru_build::ToolchainConfig {
+        optimization: opt_str.as_deref(),
+        warnings,
+        lto,
+        sanitizers,
+        flags,
+        system_deps: &sys_deps,
+    };
+
     let toolchain_path = project_dir.join("beru-toolchain.cmake");
     let prefix_refs: Vec<&Path> = prefix_paths.iter().map(|p| p.as_path()).collect();
-    generate_toolchain_cmake(
+    generate_toolchain_cmake_with_config(
         &toolchain_path,
         &manifest.package.cxx_std,
         &args.profile,
         &prefix_refs,
         &cmake_deps,
+        &toolchain_config,
     )?;
 
     let build_dir = project_dir.join("build");
