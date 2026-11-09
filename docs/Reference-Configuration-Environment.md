@@ -17,6 +17,7 @@ Beru recognizes the following environment variables to configure its runtime beh
 | `BERU_LOG` | `info` | Controls the verbosity of the internal `tracing` subsystem. It dictates how much information Beru prints to the standard error (`stderr`) stream during execution. |
 | `BERU_HOME` | `~/.beru` | Overrides the default root directory for the global Beru cache, recipes, and registry index. |
 | `BERU_JOBS` | System parallelism | Controls the number of parallel compiler jobs used during builds and custom recipe steps. |
+| `BERU_OFFLINE` | `0` | When set to `1` (or passed via `--offline`), disables all external network requests during fetch and resolve phases. |
 
 ### 1.1. Deep Dive: The `BERU_LOG` Levels
 

@@ -21,6 +21,13 @@ pub fn fetch_tarball(cache: &BeruCache, url: &str, expected_sha256: &str) -> Res
         return Ok(dest_dir);
     }
 
+    if std::env::var("BERU_OFFLINE").is_ok() {
+        bail!(
+            "cannot download {} in offline mode: package archive is not cached",
+            url
+        );
+    }
+
     info!("downloading {}", url);
 
     let client = reqwest::blocking::Client::builder()
@@ -80,6 +87,13 @@ pub fn fetch_git(cache: &BeruCache, url: &str, pin: Option<&str>) -> Result<Path
     let repo_dir = cache.git_repo_dir(url);
 
     if !repo_dir.exists() {
+        if std::env::var("BERU_OFFLINE").is_ok() {
+            bail!(
+                "cannot clone {} in offline mode: repository is not cached",
+                url
+            );
+        }
+
         info!("cloning {}", url);
         if let Some(parent) = repo_dir.parent() {
             std::fs::create_dir_all(parent)?;
@@ -108,6 +122,16 @@ pub fn fetch_git(cache: &BeruCache, url: &str, pin: Option<&str>) -> Result<Path
         }
     } else {
         debug!("git repo already cloned at {}", repo_dir.display());
+    }
+
+    if std::env::var("BERU_OFFLINE").is_ok() {
+        if let Some(pin) = pin {
+            let _ = std::process::Command::new("git")
+                .args(["checkout", "--force", pin])
+                .current_dir(&repo_dir)
+                .output();
+        }
+        return Ok(repo_dir);
     }
 
     if let Some(pin) = pin {

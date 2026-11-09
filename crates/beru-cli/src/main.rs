@@ -17,6 +17,10 @@ struct Cli {
     /// Number of parallel jobs to use for building
     #[arg(short = 'j', long, global = true)]
     jobs: Option<usize>,
+
+    /// Run in offline mode without network access
+    #[arg(long, global = true)]
+    offline: bool,
 }
 
 fn main() -> Result<()> {
@@ -33,6 +37,11 @@ fn main() -> Result<()> {
     if let Some(jobs) = cli.jobs {
         // SAFETY: This runs at the start of main before any threads are spawned.
         unsafe { std::env::set_var("BERU_JOBS", jobs.to_string()) };
+    }
+
+    if cli.offline {
+        // SAFETY: This runs at the start of main before any threads are spawned.
+        unsafe { std::env::set_var("BERU_OFFLINE", "1") };
     }
 
     commands::run(cli.command)

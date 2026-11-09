@@ -5,6 +5,7 @@ mod check;
 mod init;
 mod install;
 mod new;
+mod offline;
 mod outdated;
 mod remove;
 mod resolve;

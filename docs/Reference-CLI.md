@@ -28,7 +28,13 @@ BERU_LOG=debug beru build
 BERU_LOG=trace beru resolve
 ```
 
-### 1.3. Help and Version Discovery
+### 1.3. Global Flags
+Beru supports global flags across all subcommands:
+
+- `-j, --jobs <N>`: Number of parallel jobs to use for CMake and building.
+- `--offline`: Run in offline mode without network access. Prevents downloading missing tarballs, cloning remote Git repositories, or querying remote Git tags via `git ls-remote`. Fails fast with clear actionable messages if required dependencies are not locally cached.
+
+### 1.4. Help and Version Discovery
 Beru includes built-in documentation for every command, accessible via the `--help` flag.
 
 ```bash

@@ -159,6 +159,10 @@ pub fn resolve_graph(
 }
 
 fn resolve_git_tag_to_sha(url: &str, tag: &str) -> Result<String> {
+    if std::env::var("BERU_OFFLINE").is_ok() {
+        anyhow::bail!("cannot query remote git tags for '{}' in offline mode", url);
+    }
+
     let output = std::process::Command::new("git")
         .arg("ls-remote")
         .arg(url)
