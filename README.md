@@ -1,17 +1,15 @@
 <div align="center">
 
-```text
- ██████╗ ███████╗██████╗ ██╗   ██╗
- ██╔══██╗██╔════╝██╔══██╗██║   ██║
- ██████╔╝█████╗  ██████╔╝██║   ██║
- ██╔══██╗██╔══╝  ██╔══██╗██║   ██║
- ██████╔╝███████╗██║  ██║╚██████╔╝
- ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ 
- [ 01100010 01100101 01110010 01110101 ]
-```
+<pre align="center">
+██████╗ ███████╗██████╗ ██╗   ██╗
+██╔══██╗██╔════╝██╔══██╗██║   ██║
+██████╔╝█████╗  ██████╔╝██║   ██║
+██╔══██╗██╔══╝  ██╔══██╗██║   ██║
+██████╔╝███████╗██║  ██║╚██████╔╝
+╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ 
+</pre>
 
-# **B E R U**
-### **Next-Generation Declarative C++ Package Manager & Build Orchestrator**
+<h3><strong>Next-Generation Declarative C++ Package Manager & Build Orchestrator</strong></h3>
 
 [![CI](https://github.com/KnightShadows/Beru/workflows/CI/badge.svg)](https://github.com/KnightShadows/Beru/actions)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)

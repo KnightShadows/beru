@@ -209,5 +209,13 @@ pub fn build_project(
         other => other,
     };
     cmake_build(build_dir, target, Some(cmake_build_type))?;
+
+    // Export compile_commands.json to project root for clangd / LSP editors
+    let compile_commands = build_dir.join("compile_commands.json");
+    if compile_commands.exists() {
+        let dest = project_dir.join("compile_commands.json");
+        let _ = std::fs::copy(&compile_commands, &dest);
+    }
+
     Ok(())
 }

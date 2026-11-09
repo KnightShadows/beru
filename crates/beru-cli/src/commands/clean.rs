@@ -38,6 +38,7 @@ fn clean_dir(dir: &std::path::Path) -> Result<bool> {
     let build_dir = dir.join("build");
     let toolchain_file = dir.join("beru-toolchain.cmake");
     let override_file = dir.join("beru-override.cmake");
+    let compile_commands = dir.join("compile_commands.json");
 
     let mut cleaned_something = false;
 
@@ -56,6 +57,15 @@ fn clean_dir(dir: &std::path::Path) -> Result<bool> {
     if override_file.exists() {
         fs::remove_file(&override_file).context("failed to remove override file")?;
         info!("Removed override file at {}", override_file.display());
+        cleaned_something = true;
+    }
+
+    if compile_commands.exists() {
+        fs::remove_file(&compile_commands).context("failed to remove compile_commands.json")?;
+        info!(
+            "Removed compile_commands.json at {}",
+            compile_commands.display()
+        );
         cleaned_something = true;
     }
 
