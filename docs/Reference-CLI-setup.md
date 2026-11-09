@@ -63,3 +63,4 @@ beru setup --add-to-path
 
 * `0`: Success (or all required tools present under `--check`).
 * `1`: Failure (missing required tools when run with `--check`).
+

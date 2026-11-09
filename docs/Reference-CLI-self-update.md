@@ -36,3 +36,4 @@ beru self-update [OPTIONS]
 
 * `0`: Success. Beru was checked or updated.
 * `1`: Failure. Network error, release not found, or unsupported platform.
+
