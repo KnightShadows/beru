@@ -8,6 +8,7 @@ pub mod check;
 pub mod clean;
 pub mod index;
 pub mod init;
+pub mod install;
 pub mod new;
 pub mod outdated;
 pub mod remove;
@@ -65,6 +66,12 @@ pub enum Command {
 
     /// Run the project's tests
     Test(test::TestArgs),
+
+    /// Install a binary tool locally into ~/.beru/bin
+    Install(install::InstallArgs),
+
+    /// Uninstall a binary tool from ~/.beru/bin
+    Uninstall(install::UninstallArgs),
 }
 
 /// Dispatch a command.
@@ -85,5 +92,7 @@ pub fn run(cmd: Command) -> Result<()> {
         Command::Tree(args) => tree::exec(args),
         Command::Check(args) => check::exec(args),
         Command::Test(args) => test::exec(args),
+        Command::Install(args) => install::exec_install(args),
+        Command::Uninstall(args) => install::exec_uninstall(args),
     }
 }

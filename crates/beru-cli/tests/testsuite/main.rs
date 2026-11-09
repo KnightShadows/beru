@@ -3,6 +3,7 @@ mod build;
 mod cache;
 mod check;
 mod init;
+mod install;
 mod new;
 mod outdated;
 mod remove;

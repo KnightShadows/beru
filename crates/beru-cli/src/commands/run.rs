@@ -114,7 +114,10 @@ pub fn exec(args: RunArgs) -> Result<()> {
 }
 
 /// Search for the built executable in common CMake output locations.
-fn find_executable(build_dir: &std::path::Path, name: &str) -> Result<std::path::PathBuf> {
+pub(crate) fn find_executable(
+    build_dir: &std::path::Path,
+    name: &str,
+) -> Result<std::path::PathBuf> {
     let candidates = [
         build_dir.join(name),
         build_dir.join(format!("{name}.exe")),
