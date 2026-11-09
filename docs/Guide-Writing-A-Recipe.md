@@ -137,8 +137,8 @@ Before submitting your recipe to the global index, you must prove that it actual
 2.  Copy your new `recipe.toml` into that directory.
 3.  Create a completely new, blank Beru project somewhere else on your filesystem:
     ```bash
-    beru new recipe_test --type executable
-    cd recipe_test
+    beru new recipe-test --type executable
+    cd recipe-test
     ```
 4.  Add your new package to the `Beru.toml`:
     ```toml

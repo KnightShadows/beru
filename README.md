@@ -66,8 +66,8 @@ Invoke-WebRequest -Uri https://raw.githubusercontent.com/KnightShadows/Beru/main
 
 ```bash
 # Create a new C++20 executable project
-beru new my_engine --type executable --cxx-std c++20
-cd my_engine
+beru new my-engine --type executable --cxx-std c++20
+cd my-engine
 ```
 
 ### 3. Add Dependencies
@@ -84,7 +84,7 @@ beru add spdlog --version 1.14.1
 ```bash
 beru run
 ```
-*Beru will instantly resolve the PubGrub graph, download the release tarballs, verify their SHA-256 signatures, compile them using your system's compiler, cache the binaries, synthesize a CMake toolchain, compile your `my_engine` source code, and run the resulting executable.*
+*Beru will instantly resolve the PubGrub graph, download the release tarballs, verify their SHA-256 signatures, compile them using your system's compiler, cache the binaries, synthesize a CMake toolchain, compile your `my-engine` source code, and run the resulting executable.*
 
 ---
 

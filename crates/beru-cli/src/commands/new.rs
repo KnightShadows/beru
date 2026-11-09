@@ -19,6 +19,21 @@ pub struct NewArgs {
 }
 
 pub fn exec(args: NewArgs) -> Result<()> {
+    if !beru_manifest::is_valid_package_name(&args.name) {
+        if let Some(suggestion) = beru_manifest::suggest_package_name(&args.name) {
+            bail!(
+                "Invalid package name '{}'. Package names must be at least 2 characters, start with a letter, and contain only lowercase letters, digits, and hyphens (did you mean '{}'?).",
+                args.name,
+                suggestion
+            );
+        } else {
+            bail!(
+                "Invalid package name '{}'. Package names must be at least 2 characters, start with a letter, and contain only lowercase letters, digits, and hyphens.",
+                args.name
+            );
+        }
+    }
+
     let project_dir = PathBuf::from(&args.name);
 
     if project_dir.exists() {

@@ -73,7 +73,7 @@ With Beru installed, we can now create a new project. We will use the `beru new`
 In your terminal, navigate to the directory where you keep your code, and run:
 
 ```bash
-beru new hello_beru --type executable --cxx-std c++20
+beru new hello-beru --type executable --cxx-std c++20
 ```
 
 *Note: The `--type` flag defaults to `executable`, and `--cxx-std` defaults to `c++17`. We have explicitly provided them here for educational purposes.*
@@ -81,15 +81,15 @@ beru new hello_beru --type executable --cxx-std c++20
 Navigate into the newly created directory:
 
 ```bash
-cd hello_beru
+cd hello-beru
 ```
 
 ### 3.1. Understanding the Project Layout
 
-If you list the contents of the `hello_beru` directory, you will see the following structure:
+If you list the contents of the `hello-beru` directory, you will see the following structure:
 
 ```text
-hello_beru/
+hello-beru/
 ├── Beru.toml           # The project manifest
 ├── CMakeLists.txt      # A minimal CMake file for the local project
 ├── .gitignore          # Pre-configured to ignore build artifacts
@@ -105,7 +105,7 @@ Open the `Beru.toml` file in your favorite text editor. It should look like this
 
 ```toml
 [package]
-name = "hello_beru"
+name = "hello-beru"
 version = "0.1.0"
 cxx-std = "c++20"
 type = "executable"
@@ -143,14 +143,14 @@ When you execute a build command, Beru performs a precise orchestration sequence
 1.  **Resolution:** Beru reads `Beru.toml`. Since there are no dependencies yet, this step finishes instantly. (If there were dependencies, it would invoke the PubGrub algorithm).
 2.  **Toolchain Generation:** Beru synthesizes a `beru-toolchain.cmake` file in your project root. This file contains the precise include paths and linker flags for any dependencies.
 3.  **Compilation:** Beru invokes your system's CMake to read the local `CMakeLists.txt`, injecting the synthesized toolchain. CMake then invokes your compiler (GCC/Clang/MSVC) to compile `src/main.cpp`.
-4.  **Execution:** Finally, Beru locates the output binary (typically located in `build/hello_beru` on Unix or `build/Debug/hello_beru.exe` on Windows) and spawns it.
+4.  **Execution:** Finally, Beru locates the output binary (typically located in `build/hello-beru` on Unix or `build/Debug/hello-beru.exe` on Windows) and spawns it.
 
 **Expected Output:**
 
 ```text
-  Configuring hello_beru v0.1.0
-     Building hello_beru
-      Running `build/hello_beru`
+  Configuring hello-beru v0.1.0
+     Building hello-beru
+      Running `build/hello-beru`
 Hello from Beru!
 ```
 

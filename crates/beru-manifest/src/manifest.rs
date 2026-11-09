@@ -203,7 +203,7 @@ impl BeruManifest {
 
 /// Package names: lowercase ASCII letters, digits, and hyphens.
 /// Must start with a letter and be at least 2 characters.
-fn is_valid_package_name(name: &str) -> bool {
+pub fn is_valid_package_name(name: &str) -> bool {
     if name.len() < 2 {
         return false;
     }
@@ -213,6 +213,33 @@ fn is_valid_package_name(name: &str) -> bool {
         _ => return false,
     }
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Suggests a valid package name from an invalid one if possible.
+///
+/// Converts underscores and spaces to hyphens, converts uppercase to lowercase,
+/// and ensures the name starts with a valid prefix and meets length requirements.
+pub fn suggest_package_name(name: &str) -> Option<String> {
+    let sanitized: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            '_' | ' ' => '-',
+            c if c.is_ascii_alphanumeric() || c == '-' => c,
+            _ => '-',
+        })
+        .collect();
+    let trimmed = sanitized.trim_matches('-');
+    let candidate = if trimmed.starts_with(|c: char| c.is_ascii_lowercase()) && trimmed.len() >= 2 {
+        trimmed.to_string()
+    } else {
+        format!("pkg-{}", trimmed)
+    };
+    if is_valid_package_name(&candidate) && candidate != name {
+        Some(candidate)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -312,5 +339,18 @@ version = "0.1.0"
         assert!(!is_valid_package_name("123"));
         assert!(!is_valid_package_name("My_Lib"));
         assert!(!is_valid_package_name(""));
+    }
+
+    #[test]
+    fn test_suggest_package_name() {
+        assert_eq!(
+            suggest_package_name("my_engine"),
+            Some("my-engine".to_string())
+        );
+        assert_eq!(
+            suggest_package_name("MyEngine"),
+            Some("myengine".to_string())
+        );
+        assert_eq!(suggest_package_name("my-engine"), None);
     }
 }

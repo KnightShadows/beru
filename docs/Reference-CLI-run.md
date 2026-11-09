@@ -82,14 +82,14 @@ Ad-hoc builds are cached globally based on the script's contents and ABI profile
 
 **Building and executing a fresh executable project:**
 ```bash
-beru new my_cli --type executable
-cd my_cli
+beru new my-cli --type executable
+cd my-cli
 beru run
 ```
 *Expected Output:*
 ```text
-  Configuring my_cli v0.1.0
-     Building my_cli
-      Running `build/my_cli`
+  Configuring my-cli v0.1.0
+     Building my-cli
+      Running `build/my-cli`
 Hello from Beru!
 ```

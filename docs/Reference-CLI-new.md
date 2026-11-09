@@ -53,10 +53,10 @@ Specifies the C++ standard the project will enforce. Beru propagates this standa
 
 **Scaffolding a modern C++20 web server application:**
 ```bash
-beru new my_web_server --type executable --cxx-std c++20
+beru new my-web-server --type executable --cxx-std c++20
 ```
 
 **Scaffolding a foundational, header-only mathematics library:**
 ```bash
-beru new fast_math_utils --type header-only
+beru new fast-math-utils --type header-only
 ```
