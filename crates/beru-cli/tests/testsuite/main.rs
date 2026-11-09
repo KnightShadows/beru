@@ -20,4 +20,5 @@ mod support;
 mod test;
 mod tree;
 mod update;
+mod vendor;
 mod workspace;

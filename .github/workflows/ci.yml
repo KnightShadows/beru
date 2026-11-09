@@ -21,6 +21,10 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     
+    - name: Install clang-format (macOS)
+      if: matrix.os == 'macos-latest'
+      run: brew install clang-format || true
+
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -54,15 +58,15 @@ jobs:
     steps:
     - name: Install dependencies (Debian)
       if: startsWith(matrix.distro, 'debian')
-      run: apt-get update && apt-get install -y git curl build-essential pkg-config libssl-dev cmake
+      run: apt-get update && apt-get install -y git curl build-essential pkg-config libssl-dev cmake clang-format
 
     - name: Install dependencies (Fedora)
       if: startsWith(matrix.distro, 'fedora')
-      run: dnf install -y git curl gcc gcc-c++ make openssl-devel perl findutils cmake
+      run: dnf install -y git curl gcc gcc-c++ make openssl-devel perl findutils cmake clang-tools-extra
 
     - name: Install dependencies (Arch)
       if: startsWith(matrix.distro, 'archlinux')
-      run: pacman -Syu --noconfirm && pacman -S --noconfirm git curl gcc base-devel openssl cmake
+      run: pacman -Syu --noconfirm && pacman -S --noconfirm git curl gcc base-devel openssl cmake clang
 
     - uses: actions/checkout@v7
 

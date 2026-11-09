@@ -216,6 +216,7 @@ beru uninstall asset-baker
 | | `beru outdated` | Display outdated packages compared to the registry |
 | | `beru resolve` | Compute deterministic dependency graph and emit `Beru.lock` |
 | | `beru tree` | Print a visual DAG tree of project dependencies |
+| | `beru vendor [path]` | Vendor dependencies locally for offline air-gapped builds |
 | | `beru search <query>` | Search packages across the registry index and recipes |
 | **Build & Run** | `beru build` | Compile the project and all dependencies |
 | | `beru check` | Rapid syntax-only compilation check bypassing the linker |

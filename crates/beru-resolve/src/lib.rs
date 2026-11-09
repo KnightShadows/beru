@@ -95,7 +95,17 @@ impl<'a> BeruProvider<'a> {
                     }
                     return Ok(vec![SemanticVersion::new(0, 0, 0)]);
                 }
-                Dependency::Path(_) => {
+                Dependency::Path(p) => {
+                    let manifest_path = if p.path.is_absolute() {
+                        p.path.join("Beru.toml")
+                    } else {
+                        self.project_dir.join(&p.path).join("Beru.toml")
+                    };
+                    if let Ok(m) = beru_manifest::BeruManifest::from_file(&manifest_path)
+                        && let Ok(v) = parse_version(&m.package.version)
+                    {
+                        return Ok(vec![v]);
+                    }
                     return Ok(vec![SemanticVersion::new(0, 0, 0)]);
                 }
                 Dependency::Registry(_) | Dependency::Version(_) => {}

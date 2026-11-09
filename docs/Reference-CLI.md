@@ -72,3 +72,4 @@ The following table provides a high-level overview of the available subcommands.
 | **[`beru recipe`](Reference-CLI-recipe.md)** | Tooling | Scaffolds (`beru recipe init`) and audits (`beru recipe lint`) package recipe definitions. |
 | **[`beru self-update`](Reference-CLI-self-update.md)** | Maintenance | Downloads and installs the latest official release binary, replacing the current binary in place. |
 | **[`beru setup`](Reference-CLI-setup.md)** | Environment | Inspects and automates setup of host C++ toolchain prerequisites (git, cmake, compiler, ninja, PATH). |
+| **[`beru vendor`](Reference-CLI-vendor.md)** | Packaging | Vendors all locked dependencies locally for hermetic, offline, and air-gapped enterprise builds. |

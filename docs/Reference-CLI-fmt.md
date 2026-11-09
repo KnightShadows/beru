@@ -33,3 +33,4 @@ beru fmt [OPTIONS]
 
 * `0`: Success. All files formatted (or verified clean under `--check`).
 * `1`: Failure. Formatting check failed or `clang-format` returned an error.
+

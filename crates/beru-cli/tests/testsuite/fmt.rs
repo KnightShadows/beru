@@ -27,6 +27,15 @@ fn test_beru_fmt_formats_project() {
         )
         .build();
 
+    if which::which("clang-format").is_err() {
+        // When clang-format is not installed on PATH, beru fmt fails gracefully with actionable installation steps
+        p.beru("fmt")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("clang-format not found on PATH"));
+        return;
+    }
+
     // Check formatting - should fail since it's unformatted
     p.beru("fmt").arg("--check").assert().failure();
 

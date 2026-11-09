@@ -36,6 +36,7 @@
   * [`beru search`](Reference-CLI-search.md)
   * [`beru self-update`](Reference-CLI-self-update.md)
   * [`beru setup`](Reference-CLI-setup.md)
+  * [`beru vendor`](Reference-CLI-vendor.md)
 
 ### 🧠 Explanation
 * [Dependency Resolution](Concepts-Dependency-Resolution.md)

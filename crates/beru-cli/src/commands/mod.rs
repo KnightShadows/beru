@@ -22,6 +22,7 @@ pub mod setup;
 pub mod test;
 pub mod tree;
 pub mod update;
+pub mod vendor;
 
 /// Top-level Beru commands.
 #[derive(Debug, Subcommand)]
@@ -93,6 +94,9 @@ pub enum Command {
 
     /// Check and configure C++ prerequisites (git, cmake, compiler, ninja, PATH)
     Setup(setup::SetupArgs),
+
+    /// Vendor dependencies locally into the project for offline and air-gapped builds
+    Vendor(vendor::VendorArgs),
 }
 
 /// Dispatch a command.
@@ -120,5 +124,6 @@ pub fn run(cmd: Command) -> Result<()> {
         Command::Search(args) => search::exec(args),
         Command::SelfUpdate(args) => self_update::exec(args),
         Command::Setup(args) => setup::exec(args),
+        Command::Vendor(args) => vendor::exec(args),
     }
 }

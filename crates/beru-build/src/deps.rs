@@ -37,7 +37,7 @@ pub fn resolve_and_build_locked_dep(
         pkg.source,
     );
 
-    let recipe = resolve_recipe(
+    let mut recipe = resolve_recipe(
         name,
         Some(version),
         project_dir,
@@ -46,53 +46,33 @@ pub fn resolve_and_build_locked_dep(
         Some(&cache.index_dir()),
     )?;
 
-    let source_dir = match opt_dep {
-        Some(Dependency::Git(_)) | Some(Dependency::Path(_)) => {
-            fetch_dependency_source(name, opt_dep.unwrap(), pkg, cache, project_dir)?
-        }
-        Some(Dependency::Registry(_)) | Some(Dependency::Version(_)) | None => {
-            if let Some((ref r, _)) = recipe {
-                let src = &r.source;
-                if let Some(url) = &src.url {
-                    if url.ends_with(".tar.gz") || url.ends_with(".tgz") {
-                        let sha = pkg
-                            .checksum
-                            .clone()
-                            .or_else(|| src.sha256.clone())
-                            .ok_or_else(|| {
-                                anyhow::anyhow!(
-                                    "sha256 checksum missing for tarball of package '{}' ({})",
-                                    name,
-                                    url
-                                )
-                            })?;
-                        let extracted = beru_recipe::fetch_tarball(cache, url, &sha)?;
-                        beru_recipe::find_source_root(&extracted)?
-                    } else {
-                        let pin = pkg
-                            .checksum
-                            .as_deref()
-                            .or(src.tag.as_deref())
-                            .or(Some(version));
-                        beru_recipe::fetch_git(cache, url, pin)?
-                    }
-                } else if let Some(git) = &src.git {
-                    let pin = pkg
-                        .checksum
-                        .as_deref()
-                        .or(src.tag.as_deref())
-                        .or(Some(version));
-                    beru_recipe::fetch_git(cache, git, pin)?
-                } else {
-                    bail!("Recipe for {} has no source", name);
-                }
-            } else {
-                bail!(
-                    "Could not find source or recipe for transitive dependency {}",
-                    name
-                );
-            }
-        }
+    // Check if package source is vendored locally in project
+    let vendored_dir = project_dir.join("vendor").join(format!("{name}-{version}"));
+    if recipe.is_none()
+        && vendored_dir.join("recipe.toml").exists()
+        && let Ok(r) = beru_recipe::Recipe::from_file(&vendored_dir.join("recipe.toml"))
+    {
+        recipe = Some((r, vendored_dir.join("recipe.toml")));
+    }
+
+    let source_dir = if vendored_dir.exists() {
+        println!(
+            "  {} {} ({}) — vendored",
+            style("Using").cyan().bold(),
+            name,
+            version
+        );
+        vendored_dir
+    } else {
+        resolve_package_source(
+            name,
+            version,
+            opt_dep,
+            pkg,
+            recipe.as_ref(),
+            cache,
+            project_dir,
+        )?
     };
 
     println!("  {} {}...", style("Building").green().bold(), name,);
@@ -116,6 +96,66 @@ pub fn resolve_and_build_locked_dep(
     }
 
     Ok(install_prefix)
+}
+
+/// Resolve the source directory for a locked dependency package.
+pub fn resolve_package_source(
+    name: &str,
+    version: &str,
+    opt_dep: Option<&Dependency>,
+    pkg: &beru_manifest::LockedPackage,
+    recipe: Option<&(beru_recipe::Recipe, PathBuf)>,
+    cache: &BeruCache,
+    project_dir: &Path,
+) -> Result<PathBuf> {
+    match opt_dep {
+        Some(Dependency::Git(_)) | Some(Dependency::Path(_)) => {
+            fetch_dependency_source(name, opt_dep.unwrap(), pkg, cache, project_dir)
+        }
+        Some(Dependency::Registry(_)) | Some(Dependency::Version(_)) | None => {
+            if let Some((r, _)) = recipe {
+                let src = &r.source;
+                if let Some(url) = &src.url {
+                    if url.ends_with(".tar.gz") || url.ends_with(".tgz") {
+                        let sha = pkg
+                            .checksum
+                            .clone()
+                            .or_else(|| src.sha256.clone())
+                            .ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "sha256 checksum missing for tarball of package '{}' ({})",
+                                    name,
+                                    url
+                                )
+                            })?;
+                        let extracted = beru_recipe::fetch_tarball(cache, url, &sha)?;
+                        beru_recipe::find_source_root(&extracted)
+                    } else {
+                        let pin = pkg
+                            .checksum
+                            .as_deref()
+                            .or(src.tag.as_deref())
+                            .or(Some(version));
+                        beru_recipe::fetch_git(cache, url, pin)
+                    }
+                } else if let Some(git) = &src.git {
+                    let pin = pkg
+                        .checksum
+                        .as_deref()
+                        .or(src.tag.as_deref())
+                        .or(Some(version));
+                    beru_recipe::fetch_git(cache, git, pin)
+                } else {
+                    bail!("Recipe for {} has no source", name);
+                }
+            } else {
+                bail!(
+                    "Could not find source or recipe for transitive dependency {}",
+                    name
+                );
+            }
+        }
+    }
 }
 
 /// Fetch a dependency's source code (from Git or a local path).
