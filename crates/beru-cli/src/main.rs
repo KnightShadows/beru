@@ -22,7 +22,8 @@ struct Cli {
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_env("BERU_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_env("BERU_LOG")
+                .unwrap_or_else(|_| EnvFilter::new("info,pubgrub=warn")),
         )
         .with_target(false)
         .init();

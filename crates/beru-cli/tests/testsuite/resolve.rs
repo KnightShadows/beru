@@ -1,4 +1,5 @@
 use crate::support::project;
+use predicates::prelude::*;
 use std::fs;
 
 #[test]
@@ -87,6 +88,81 @@ fn test_fresh_install_resolve_reaches_build() {
     let lock = fs::read_to_string(engine_dir.join("Beru.lock")).unwrap();
     assert!(lock.contains("fmt"));
     assert!(lock.contains("11.0.2"));
+}
+
+#[test]
+fn test_beru_resolve_conflict_explanation() {
+    let p = project("conflict-proj")
+        .file(
+            "Beru.toml",
+            r#"
+            [package]
+            name = "conflict-proj"
+            version = "0.1.0"
+
+            [dependencies]
+            a = "1.0.0"
+            b = "1.0.0"
+            "#,
+        )
+        .file(
+            "recipes/a/recipe.toml",
+            r#"
+            [package]
+            name = "a"
+            version = "1.0.0"
+            type = "header-only"
+
+            [source]
+            url = "https://example.com/a-1.0.0.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+            [dependencies]
+            libx = "1.0.0"
+            "#,
+        )
+        .file(
+            "recipes/b/recipe.toml",
+            r#"
+            [package]
+            name = "b"
+            version = "1.0.0"
+            type = "header-only"
+
+            [source]
+            url = "https://example.com/b-1.0.0.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+            [dependencies]
+            libx = "2.0.0"
+            "#,
+        )
+        .file(
+            "recipes/libx/recipe.toml",
+            r#"
+            [package]
+            name = "libx"
+            version = "1.0.0"
+            type = "header-only"
+
+            [source]
+            url = "https://example.com/libx-1.0.0.tar.gz"
+            sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+            "#,
+        )
+        .build();
+
+    let output = p.beru("resolve").assert().failure();
+    output
+        .stderr(predicates::str::contains("a"))
+        .stderr(predicates::str::contains("b"))
+        .stderr(predicates::str::contains("libx"))
+        .stdout(predicates::str::contains("unit_propagation").not())
+        .stdout(predicates::str::contains("DP chose").not())
+        .stdout(predicates::str::contains("prior cause").not())
+        .stderr(predicates::str::contains("unit_propagation").not())
+        .stderr(predicates::str::contains("DP chose").not())
+        .stderr(predicates::str::contains("prior cause").not());
 }
 
 /// Helper: create a minimal recipe.toml for a header-only test package.

@@ -37,31 +37,6 @@ pub fn get_embedded_recipe(package_name: &str) -> Option<&'static str> {
         .map(|(_, content)| *content)
 }
 
-/// Embedded fallback recipes shipped inside the binary.
-pub const EMBEDDED_RECIPES: &[(&str, &str)] = &[
-    ("fmt", include_str!("../../beru-cli/recipes/fmt/recipe.toml")),
-    (
-        "gtest",
-        include_str!("../../beru-cli/recipes/gtest/recipe.toml"),
-    ),
-    (
-        "nlohmann_json",
-        include_str!("../../beru-cli/recipes/nlohmann_json/recipe.toml"),
-    ),
-    (
-        "spdlog",
-        include_str!("../../beru-cli/recipes/spdlog/recipe.toml"),
-    ),
-];
-
-/// Get an embedded recipe string by package name if it exists.
-pub fn get_embedded_recipe(package_name: &str) -> Option<&'static str> {
-    EMBEDDED_RECIPES
-        .iter()
-        .find(|(name, _)| *name == package_name)
-        .map(|(_, content)| *content)
-}
-
 /// Resolve a recipe for a given package name.
 ///
 /// Resolution order:
@@ -174,35 +149,6 @@ mod tests {
         let project_dir = temp.path();
 
         let resolved = resolve_recipe("fmt", Some("9.0.0"), project_dir, None, None, None).unwrap();
-        assert!(resolved.is_none());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_embedded_recipe_fallback() {
-        let temp = tempfile::tempdir().unwrap();
-        let project_dir = temp.path();
-
-        let resolved =
-            resolve_recipe("fmt", Some("11.0.2"), project_dir, None, None, None).unwrap();
-        assert!(resolved.is_some());
-        let (recipe, path) = resolved.unwrap();
-        assert_eq!(recipe.package.name, "fmt");
-        assert_eq!(recipe.package.version, "11.0.2");
-        assert!(path.to_string_lossy().contains("<embedded>"));
-    }
-
-    #[test]
-    fn test_embedded_recipe_wrong_version() {
-        let temp = tempfile::tempdir().unwrap();
-        let project_dir = temp.path();
-
-        let resolved =
-            resolve_recipe("fmt", Some("9.0.0"), project_dir, None, None, None).unwrap();
         assert!(resolved.is_none());
     }
 }
