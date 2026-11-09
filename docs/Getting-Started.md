@@ -27,7 +27,7 @@ Beru does not bundle a compiler. It will use the default C++ compiler available 
 
 ## 2. Installing Beru
 
-Beru is distributed as a standalone, statically linked binary. Installation is automated via simple shell scripts.
+Beru is distributed as a standalone, statically linked binary (compiled against `musl` on Linux). Pre-built binaries are available for Linux (x86_64, aarch64), macOS (Intel x86_64, Apple Silicon arm64), and Windows (x86_64). Installation is automated via simple shell scripts.
 
 ### 2.1. Installation on Linux and macOS
 

@@ -48,7 +48,14 @@ beru index update
 
 ### 1. Installation
 
-Beru is distributed as a single, statically linked binary.
+Beru is distributed as a single, statically linked binary (via `musl` on Linux).
+
+**Runtime Requirements:**
+* **Git** (version 2.0+) — to fetch package recipes and Git-sourced dependencies
+* **CMake** (version 3.20+) — to configure and compile third-party libraries
+* **A C++ Compiler** — GCC, Clang, or MSVC supporting your target C++ standard
+
+The `install.sh` script supports Linux (x86_64, aarch64) and macOS (x86_64, Apple Silicon). On Windows, use `install.ps1`.
 
 **Linux & macOS:**
 ```bash

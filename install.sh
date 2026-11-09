@@ -11,21 +11,27 @@ ARCH="$(uname -m)"
 
 case "$OS" in
     Linux)
-        TARGET="x86_64-unknown-linux-gnu"
-        if [ "$ARCH" != "x86_64" ]; then
-            echo "Error: Only x86_64 Linux is currently supported by pre-built binaries."
+        if [ "$ARCH" = "x86_64" ]; then
+            TARGET="x86_64-unknown-linux-musl"
+        elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+            TARGET="aarch64-unknown-linux-musl"
+        else
+            echo "Error: Architecture $ARCH is not supported by pre-built Linux binaries."
             exit 1
         fi
         ;;
     Darwin)
         if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
             TARGET="aarch64-apple-darwin"
-        else
+        elif [ "$ARCH" = "x86_64" ]; then
             TARGET="x86_64-apple-darwin"
+        else
+            echo "Error: Architecture $ARCH is not supported by pre-built macOS binaries."
+            exit 1
         fi
         ;;
     *)
-        echo "Error: Unsupported OS $OS for this script. Please build from source."
+        echo "Error: Unsupported OS $OS for this script. Please build from source or use install.ps1 on Windows."
         exit 1
         ;;
 esac

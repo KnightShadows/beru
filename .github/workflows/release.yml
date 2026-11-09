@@ -24,6 +24,10 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
           - target: x86_64-apple-darwin
             os: macos-latest
           - target: aarch64-apple-darwin
@@ -42,13 +46,13 @@ jobs:
           target: ${{ matrix.target }}
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install dependencies for Linux packages
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y ruby ruby-dev rubygems rpm libarchive-tools
           sudo gem install fpm
       - name: Build and upload Linux packages
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           mkdir -p package/usr/bin
