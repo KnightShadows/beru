@@ -442,17 +442,31 @@ fn print_remediation(_missing: &[&ToolCheck]) {
 
     #[cfg(target_os = "linux")]
     {
+        let is_root = Command::new("id")
+            .arg("-u")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+            .unwrap_or_else(|_| std::env::var("USER").map(|u| u == "root").unwrap_or(false));
+        let has_sudo = which::which("sudo").is_ok();
+        let prefix = if !is_root && has_sudo { "sudo " } else { "" };
+
         if which::which("apt-get").is_ok() {
             println!("  Debian/Ubuntu:");
             println!(
-                "    sudo apt-get update && sudo apt-get install -y build-essential cmake git ninja-build"
+                "    {prefix}apt-get update && {prefix}apt-get install -y build-essential cmake git ninja-build"
             );
         } else if which::which("dnf").is_ok() {
             println!("  Fedora/RHEL:");
-            println!("    sudo dnf install -y gcc-c++ cmake git ninja-build");
+            println!("    {prefix}dnf install -y gcc-c++ cmake git ninja-build");
         } else if which::which("pacman").is_ok() {
             println!("  Arch Linux:");
-            println!("    sudo pacman -S --noconfirm base-devel cmake git ninja");
+            println!("    {prefix}pacman -S --noconfirm base-devel cmake git ninja");
+        } else if which::which("zypper").is_ok() {
+            println!("  openSUSE:");
+            println!("    {prefix}zypper install -y gcc-c++ cmake git ninja");
+        } else if which::which("apk").is_ok() {
+            println!("  Alpine Linux:");
+            println!("    {prefix}apk add --no-cache build-base cmake git ninja");
         } else {
             println!(
                 "  Please install git, cmake (>= 3.20), a C++ compiler (g++/clang++), and ninja via your package manager."
@@ -639,44 +653,63 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
             style("Progress:").cyan().bold()
         );
 
-        let is_root = std::env::var("USER").map(|u| u == "root").unwrap_or(false);
+        let is_root = Command::new("id")
+            .arg("-u")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+            .unwrap_or_else(|_| std::env::var("USER").map(|u| u == "root").unwrap_or(false));
+        let has_sudo = which::which("sudo").is_ok();
+        let use_sudo = !is_root && has_sudo;
 
         if which::which("apt-get").is_ok() {
             println!(
                 "  {} packages via apt-get...",
                 style("Installing").cyan().bold()
             );
-            let script = if is_root {
-                "apt-get update && apt-get install -y build-essential cmake git ninja-build clang-format"
+            let prefix = if use_sudo {
+                "sudo DEBIAN_FRONTEND=noninteractive "
             } else {
-                "sudo apt-get update && sudo apt-get install -y build-essential cmake git ninja-build clang-format"
+                "DEBIAN_FRONTEND=noninteractive "
             };
-            let _ = Command::new("sh").args(["-c", script]).status();
+            let script = format!(
+                "{prefix}apt-get update && {prefix}apt-get install -y --no-install-recommends build-essential cmake git ninja-build"
+            );
+            let _ = Command::new("sh").args(["-c", &script]).status();
         } else if which::which("dnf").is_ok() {
             println!(
                 "  {} packages via dnf...",
                 style("Installing").cyan().bold()
             );
-            let script = if is_root {
-                "dnf install -y gcc-c++ cmake git ninja-build clang-tools-extra"
-            } else {
-                "sudo dnf install -y gcc-c++ cmake git ninja-build clang-tools-extra"
-            };
-            let _ = Command::new("sh").args(["-c", script]).status();
+            let prefix = if use_sudo { "sudo " } else { "" };
+            let script = format!("{prefix}dnf install -y gcc-c++ cmake git ninja-build");
+            let _ = Command::new("sh").args(["-c", &script]).status();
         } else if which::which("pacman").is_ok() {
             println!(
                 "  {} packages via pacman...",
                 style("Installing").cyan().bold()
             );
-            let script = if is_root {
-                "pacman -S --noconfirm base-devel cmake git ninja clang"
-            } else {
-                "sudo pacman -S --noconfirm base-devel cmake git ninja clang"
-            };
-            let _ = Command::new("sh").args(["-c", script]).status();
+            let prefix = if use_sudo { "sudo " } else { "" };
+            let script = format!("{prefix}pacman -S --noconfirm base-devel cmake git ninja");
+            let _ = Command::new("sh").args(["-c", &script]).status();
+        } else if which::which("zypper").is_ok() {
+            println!(
+                "  {} packages via zypper...",
+                style("Installing").cyan().bold()
+            );
+            let prefix = if use_sudo { "sudo " } else { "" };
+            let script = format!("{prefix}zypper install -y gcc-c++ cmake git ninja");
+            let _ = Command::new("sh").args(["-c", &script]).status();
+        } else if which::which("apk").is_ok() {
+            println!(
+                "  {} packages via apk...",
+                style("Installing").cyan().bold()
+            );
+            let prefix = if use_sudo { "sudo " } else { "" };
+            let script = format!("{prefix}apk add --no-cache build-base cmake git ninja");
+            let _ = Command::new("sh").args(["-c", &script]).status();
         } else {
             println!(
-                "{} Supported package manager not detected (apt-get, dnf, pacman). Please install prerequisites manually.",
+                "{} Supported package manager not detected (apt-get, dnf, pacman, zypper, apk). Please install prerequisites manually.",
                 style("Notice:").yellow().bold()
             );
         }
