@@ -31,6 +31,7 @@
   * [`beru index update`](Reference-CLI-index-update.md)
   * [`beru cache`](Reference-CLI-cache.md)
   * [`beru clean`](Reference-CLI-clean.md)
+  * [`beru recipe`](Reference-CLI-recipe.md)
 
 ### 🧠 Explanation
 * [Dependency Resolution](Concepts-Dependency-Resolution.md)

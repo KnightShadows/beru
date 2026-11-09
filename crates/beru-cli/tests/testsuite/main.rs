@@ -8,6 +8,7 @@ mod new;
 mod offline;
 mod outdated;
 mod profile;
+mod recipe;
 mod remove;
 mod resolve;
 mod run;

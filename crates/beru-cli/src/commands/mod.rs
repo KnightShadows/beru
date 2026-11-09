@@ -11,6 +11,7 @@ pub mod init;
 pub mod install;
 pub mod new;
 pub mod outdated;
+pub mod recipe;
 pub mod remove;
 pub mod resolve;
 pub mod run;
@@ -72,6 +73,9 @@ pub enum Command {
 
     /// Uninstall a binary tool from ~/.beru/bin
     Uninstall(install::UninstallArgs),
+
+    /// Author and validate recipe definitions
+    Recipe(recipe::RecipeArgs),
 }
 
 /// Dispatch a command.
@@ -94,5 +98,6 @@ pub fn run(cmd: Command) -> Result<()> {
         Command::Test(args) => test::exec(args),
         Command::Install(args) => install::exec_install(args),
         Command::Uninstall(args) => install::exec_uninstall(args),
+        Command::Recipe(args) => recipe::exec(args),
     }
 }
