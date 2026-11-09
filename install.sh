@@ -68,24 +68,29 @@ chmod +x "$INSTALL_DIR/$BIN"
 
 rm -rf "$TMP_DIR"
 
-# Attempt to add to PATH automatically
-if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo "Adding $INSTALL_DIR to your PATH..."
-    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-        if [ -f "$rc" ]; then
-            if ! grep -q "$INSTALL_DIR" "$rc"; then
-                echo "" >> "$rc"
-                echo "# Added by Beru installer" >> "$rc"
-                echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$rc"
-            fi
+# Attempt to add to PATH automatically in shell rc files
+ADDED_TO_RC=false
+for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+    if [ -f "$rc" ]; then
+        if ! grep -q "$INSTALL_DIR" "$rc"; then
+            echo "" >> "$rc"
+            echo "# Added by Beru installer" >> "$rc"
+            echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$rc"
+            ADDED_TO_RC=true
         fi
-    done
+    fi
+done
+
+if [ "$ADDED_TO_RC" = false ] && [ ! -f "$HOME/.bashrc" ] && [ ! -f "$HOME/.zshrc" ] && [ ! -f "$HOME/.profile" ]; then
+    echo "# Added by Beru installer" >> "$HOME/.profile"
+    echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$HOME/.profile"
 fi
+
+# Ensure INSTALL_DIR is in PATH for the current installer execution
+export PATH="$INSTALL_DIR:$PATH"
 
 echo "Installation complete!"
 echo "Running initial environment and prerequisite setup..."
 "$INSTALL_DIR/$BIN" setup --install-prereqs || true
 
-if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo "Please restart your terminal or run 'source ~/.bashrc' (or shell equivalent) to use Beru."
-fi
+echo "Please restart your terminal or run 'source ~/.bashrc' (or shell equivalent) to use Beru."

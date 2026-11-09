@@ -66,14 +66,13 @@ pub fn exec(args: SetupArgs) -> Result<()> {
     }
 
     println!(
-        "\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "\n{}\n{}\n{}\n{}\n{}\n{}",
         style(" ██████╗ ███████╗██████╗ ██╗   ██╗").cyan().bold(),
         style(" ██╔══██╗██╔════╝██╔══██╗██║   ██║").cyan().bold(),
         style(" ██████╔╝█████╗  ██████╔╝██║   ██║").cyan().bold(),
         style(" ██╔══██╗██╔══╝  ██╔══██╗██║   ██║").cyan().bold(),
         style(" ██████╔╝███████╗██║  ██║╚██████╔╝").cyan().bold(),
         style(" ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ").cyan().bold(),
-        style(" [ 01100010 01100101 01110010 01110101 ]").dim(),
     );
 
     println!(
@@ -592,6 +591,15 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
                 _ => {}
             }
         }
+
+        update_process_path(&[
+            r"C:\Program Files\Git\cmd",
+            r"C:\Program Files\CMake\bin",
+            r"C:\Program Files\LLVM\bin",
+            r"C:\Program Files\Ninja",
+            r"C:\ProgramData\chocolatey\bin",
+        ]);
+
         Ok(())
     }
 
@@ -643,6 +651,9 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
                 style("Notice:").yellow().bold()
             );
         }
+
+        update_process_path(&["/opt/homebrew/bin", "/usr/local/bin"]);
+
         Ok(())
     }
 
@@ -667,12 +678,13 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
                 style("Installing").cyan().bold()
             );
             let prefix = if use_sudo {
-                "sudo DEBIAN_FRONTEND=noninteractive "
+                "sudo env DEBIAN_FRONTEND=noninteractive "
             } else {
-                "DEBIAN_FRONTEND=noninteractive "
+                "env DEBIAN_FRONTEND=noninteractive "
             };
+            let apt_opts = "-o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false";
             let script = format!(
-                "{prefix}apt-get update && {prefix}apt-get install -y --no-install-recommends build-essential cmake git ninja-build"
+                "{prefix}apt-get {apt_opts} update || true; {prefix}apt-get {apt_opts} install -y --no-install-recommends build-essential cmake git ninja-build || {prefix}apt-get {apt_opts} install -y --no-install-recommends build-essential cmake git"
             );
             let _ = Command::new("sh").args(["-c", &script]).status();
         } else if which::which("dnf").is_ok() {
@@ -681,7 +693,9 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
                 style("Installing").cyan().bold()
             );
             let prefix = if use_sudo { "sudo " } else { "" };
-            let script = format!("{prefix}dnf install -y gcc-c++ cmake git ninja-build");
+            let script = format!(
+                "{prefix}dnf install -y gcc-c++ cmake git ninja-build || {prefix}dnf install -y gcc-c++ cmake git"
+            );
             let _ = Command::new("sh").args(["-c", &script]).status();
         } else if which::which("pacman").is_ok() {
             println!(
@@ -689,7 +703,9 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
                 style("Installing").cyan().bold()
             );
             let prefix = if use_sudo { "sudo " } else { "" };
-            let script = format!("{prefix}pacman -S --noconfirm base-devel cmake git ninja");
+            let script = format!(
+                "{prefix}pacman -Sy --noconfirm base-devel cmake git ninja || {prefix}pacman -Sy --noconfirm base-devel cmake git"
+            );
             let _ = Command::new("sh").args(["-c", &script]).status();
         } else if which::which("zypper").is_ok() {
             println!(
@@ -697,7 +713,9 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
                 style("Installing").cyan().bold()
             );
             let prefix = if use_sudo { "sudo " } else { "" };
-            let script = format!("{prefix}zypper install -y gcc-c++ cmake git ninja");
+            let script = format!(
+                "{prefix}zypper install -y gcc-c++ cmake git ninja || {prefix}zypper install -y gcc-c++ cmake git"
+            );
             let _ = Command::new("sh").args(["-c", &script]).status();
         } else if which::which("apk").is_ok() {
             println!(
@@ -705,7 +723,9 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
                 style("Installing").cyan().bold()
             );
             let prefix = if use_sudo { "sudo " } else { "" };
-            let script = format!("{prefix}apk add --no-cache build-base cmake git ninja");
+            let script = format!(
+                "{prefix}apk add --no-cache build-base cmake git ninja || {prefix}apk add --no-cache build-base cmake git"
+            );
             let _ = Command::new("sh").args(["-c", &script]).status();
         } else {
             println!(
@@ -713,6 +733,8 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
                 style("Notice:").yellow().bold()
             );
         }
+
+        update_process_path(&["/usr/local/bin", "/usr/bin", "/bin"]);
 
         for check in checks {
             if check.name == "PATH" && !check.found {
@@ -724,10 +746,35 @@ fn run_prereq_install(checks: &[ToolCheck]) -> Result<()> {
     }
 }
 
+fn update_process_path(new_dirs: &[impl AsRef<std::path::Path>]) {
+    let current_path = std::env::var_os("PATH").unwrap_or_default();
+    let mut split = std::env::split_paths(&current_path).collect::<Vec<_>>();
+    let mut changed = false;
+    for dir in new_dirs {
+        let p = dir.as_ref().to_path_buf();
+        if p.exists() && !split.contains(&p) {
+            split.insert(0, p);
+            changed = true;
+        }
+    }
+    if changed {
+        let Ok(new_path) = std::env::join_paths(split) else {
+            return;
+        };
+        // SAFETY: beru setup runs synchronously as a single-threaded CLI command;
+        // updating PATH here allows immediate post-install toolchain re-evaluation.
+        unsafe {
+            std::env::set_var("PATH", new_path);
+        }
+    }
+}
+
 fn add_beru_to_path() -> Result<()> {
     let cache = beru_core::cache::BeruCache::default_location()?;
     cache.ensure_dirs()?;
     let bin_dir = cache.bin_dir();
+
+    update_process_path(&[&bin_dir]);
 
     #[cfg(windows)]
     {
