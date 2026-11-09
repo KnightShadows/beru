@@ -28,6 +28,13 @@ tracing-subscriber = { workspace = true }
 toml_edit = { workspace = true }
 termtree = { workspace = true }
 which = { workspace = true }
+reqwest = { workspace = true }
+flate2 = { workspace = true }
+tar = { workspace = true }
+dirs = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tempfile = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"

@@ -32,6 +32,8 @@
   * [`beru cache`](Reference-CLI-cache.md)
   * [`beru clean`](Reference-CLI-clean.md)
   * [`beru recipe`](Reference-CLI-recipe.md)
+  * [`beru self-update`](Reference-CLI-self-update.md)
+  * [`beru setup`](Reference-CLI-setup.md)
 
 ### 🧠 Explanation
 * [Dependency Resolution](Concepts-Dependency-Resolution.md)

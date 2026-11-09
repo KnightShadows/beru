@@ -15,6 +15,8 @@ pub mod recipe;
 pub mod remove;
 pub mod resolve;
 pub mod run;
+pub mod self_update;
+pub mod setup;
 pub mod test;
 pub mod tree;
 pub mod update;
@@ -76,6 +78,13 @@ pub enum Command {
 
     /// Author and validate recipe definitions
     Recipe(recipe::RecipeArgs),
+
+    /// Update the Beru binary to the latest release
+    #[command(name = "self-update")]
+    SelfUpdate(self_update::SelfUpdateArgs),
+
+    /// Check and configure C++ prerequisites (git, cmake, compiler, ninja, PATH)
+    Setup(setup::SetupArgs),
 }
 
 /// Dispatch a command.
@@ -99,5 +108,7 @@ pub fn run(cmd: Command) -> Result<()> {
         Command::Install(args) => install::exec_install(args),
         Command::Uninstall(args) => install::exec_uninstall(args),
         Command::Recipe(args) => recipe::exec(args),
+        Command::SelfUpdate(args) => self_update::exec(args),
+        Command::Setup(args) => setup::exec(args),
     }
 }

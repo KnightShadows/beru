@@ -65,3 +65,4 @@ Checks performed:
 
 * `0`: Success. The recipe was scaffolded or passed lint validation.
 * `1`: Failure. Validation failed or invalid arguments were supplied.
+

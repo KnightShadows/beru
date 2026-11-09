@@ -59,11 +59,8 @@ curl -sL "$DOWNLOAD_URL" -o "$TMP_DIR/$BIN.tar.gz"
 echo "Extracting..."
 tar -xzf "$TMP_DIR/$BIN.tar.gz" -C "$TMP_DIR"
 
-INSTALL_DIR="$HOME/.cargo/bin"
-if [ ! -d "$INSTALL_DIR" ]; then
-    INSTALL_DIR="$HOME/.local/bin"
-    mkdir -p "$INSTALL_DIR"
-fi
+INSTALL_DIR="$HOME/.beru/bin"
+mkdir -p "$INSTALL_DIR"
 
 echo "Installing to $INSTALL_DIR..."
 mv "$TMP_DIR/$BIN" "$INSTALL_DIR/"
@@ -83,7 +80,12 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
             fi
         fi
     done
-    echo "Installation complete! Please restart your terminal or run 'source ~/.bashrc' (or your shell's equivalent) to use Beru."
-else
-    echo "Installation complete! $INSTALL_DIR is already in your PATH."
+fi
+
+echo "Installation complete!"
+echo "Running initial environment and prerequisite check..."
+"$INSTALL_DIR/$BIN" setup || true
+
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    echo "Please restart your terminal or run 'source ~/.bashrc' (or shell equivalent) to use Beru."
 fi

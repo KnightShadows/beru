@@ -12,6 +12,8 @@ mod recipe;
 mod remove;
 mod resolve;
 mod run;
+mod self_update;
+mod setup;
 mod support;
 mod test;
 mod tree;

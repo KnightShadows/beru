@@ -40,3 +40,4 @@ beru uninstall <PACKAGE_NAME>
 
 * `0`: Success. The binary was installed or uninstalled.
 * `1`: Failure. Either the target is not an executable project, build failed, or the binary to uninstall was not found.
+

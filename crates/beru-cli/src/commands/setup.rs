@@ -1,0 +1,499 @@
+use anyhow::{Context, Result, bail};
+use clap::Args;
+use console::style;
+use std::process::Command;
+
+/// Arguments for `beru setup`.
+#[derive(Debug, Args)]
+pub struct SetupArgs {
+    /// Only check prerequisites and exit with code 0 (success) or 1 (failure)
+    #[arg(long)]
+    pub check: bool,
+
+    /// Show or execute installation commands for missing prerequisites
+    #[arg(long = "install-prereqs")]
+    pub install_prereqs: bool,
+
+    /// Add ~/.beru/bin to user PATH environment variable
+    #[arg(long = "add-to-path")]
+    pub add_to_path: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ToolCheck {
+    name: &'static str,
+    required: bool,
+    found: bool,
+    details: String,
+}
+
+/// Execute the `beru setup` command.
+pub fn exec(args: SetupArgs) -> Result<()> {
+    if args.add_to_path {
+        add_beru_to_path()?;
+        println!(
+            "{} Successfully configured Beru bin directory in user PATH.",
+            style("Success:").green().bold()
+        );
+        return Ok(());
+    }
+
+    println!(
+        "\n{}",
+        style("=== Beru Environment & Toolchain Setup ===")
+            .cyan()
+            .bold()
+    );
+
+    let git_check = check_git();
+    let cmake_check = check_cmake();
+    let compiler_check = check_compiler();
+    let ninja_check = check_ninja();
+    let path_check = check_path();
+
+    let checks = vec![
+        git_check,
+        cmake_check,
+        compiler_check,
+        ninja_check,
+        path_check,
+    ];
+
+    println!();
+    for check in &checks {
+        let status_str = if check.found {
+            style("[OK]").green().bold()
+        } else if check.required {
+            style("[FAIL]").red().bold()
+        } else {
+            style("[WARN]").yellow().bold()
+        };
+
+        println!(
+            "  {:<15} {:<8} {}",
+            style(check.name).bold(),
+            status_str,
+            check.details
+        );
+    }
+    println!();
+
+    let missing_required: Vec<&ToolCheck> =
+        checks.iter().filter(|c| c.required && !c.found).collect();
+
+    if !missing_required.is_empty() {
+        println!(
+            "{} Some required prerequisites are missing or outdated.",
+            style("Notice:").red().bold()
+        );
+        print_remediation(&missing_required);
+
+        if args.install_prereqs {
+            run_prereq_install()?;
+        }
+
+        if args.check {
+            bail!("Prerequisites check failed: missing required C++ tools");
+        }
+        return Ok(());
+    }
+
+    let missing_optional: Vec<&ToolCheck> =
+        checks.iter().filter(|c| !c.required && !c.found).collect();
+
+    if !missing_optional.is_empty() {
+        println!(
+            "{} All required tools are present, but some recommended tools are missing.",
+            style("Notice:").yellow().bold()
+        );
+        for item in missing_optional {
+            if item.name == "PATH" {
+                println!(
+                    "  -> Run {} to add ~/.beru/bin to your PATH.",
+                    style("beru setup --add-to-path").cyan()
+                );
+            } else if item.name == "ninja" {
+                println!("  -> Installing Ninja is recommended for optimal build speeds.");
+            }
+        }
+        println!();
+    } else {
+        println!(
+            "{} All prerequisites are met! You are ready to build with Beru.\n",
+            style("Success:").green().bold()
+        );
+    }
+
+    Ok(())
+}
+
+fn check_git() -> ToolCheck {
+    match which::which("git") {
+        Ok(path) => {
+            let output = Command::new(&path).arg("--version").output();
+            let details = match output {
+                Ok(out) if out.status.success() => {
+                    String::from_utf8_lossy(&out.stdout).trim().to_string()
+                }
+                _ => format!("Found at {}", path.display()),
+            };
+            ToolCheck {
+                name: "git",
+                required: true,
+                found: true,
+                details,
+            }
+        }
+        Err(_) => ToolCheck {
+            name: "git",
+            required: true,
+            found: false,
+            details: "Not found on PATH (required for package index and git dependencies)"
+                .to_string(),
+        },
+    }
+}
+
+fn check_cmake() -> ToolCheck {
+    match which::which("cmake") {
+        Ok(path) => {
+            let output = Command::new(&path).arg("--version").output();
+            if let Ok(out) = output
+                && out.status.success()
+            {
+                let text = String::from_utf8_lossy(&out.stdout);
+                if let Some((major, minor)) = parse_cmake_version(&text) {
+                    let is_supported = major > 3 || (major == 3 && minor >= 20);
+                    let first_line = text.lines().next().unwrap_or("").trim();
+                    if is_supported {
+                        return ToolCheck {
+                            name: "cmake",
+                            required: true,
+                            found: true,
+                            details: format!("{first_line} (>= 3.20 supported)"),
+                        };
+                    } else {
+                        return ToolCheck {
+                            name: "cmake",
+                            required: true,
+                            found: false,
+                            details: format!(
+                                "{first_line} - OUTDATED (Beru requires CMake >= 3.20)"
+                            ),
+                        };
+                    }
+                }
+            }
+            ToolCheck {
+                name: "cmake",
+                required: true,
+                found: true,
+                details: format!("Found at {}", path.display()),
+            }
+        }
+        Err(_) => ToolCheck {
+            name: "cmake",
+            required: true,
+            found: false,
+            details: "Not found on PATH (required for C++ build orchestration)".to_string(),
+        },
+    }
+}
+
+fn parse_cmake_version(output: &str) -> Option<(u64, u64)> {
+    for line in output.lines() {
+        if line.contains("cmake version") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            for part in parts {
+                let segments: Vec<&str> = part.split('.').collect();
+                if segments.len() >= 2
+                    && let (Ok(major), Ok(minor)) =
+                        (segments[0].parse::<u64>(), segments[1].parse::<u64>())
+                {
+                    return Some((major, minor));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn check_compiler() -> ToolCheck {
+    // Probe compilers in order: cl (MSVC), clang++, g++, c++
+    let candidates = if cfg!(windows) {
+        vec!["cl", "clang++", "g++"]
+    } else {
+        vec!["clang++", "g++", "c++"]
+    };
+
+    for candidate in candidates {
+        if let Ok(path) = which::which(candidate) {
+            let details = if candidate == "cl" {
+                // cl /? exits with banner in stderr/stdout
+                let out = Command::new(&path).arg("/?").output();
+                match out {
+                    Ok(o) => {
+                        let text = String::from_utf8_lossy(&o.stdout);
+                        let first = text.lines().next().unwrap_or("Microsoft C/C++ Compiler");
+                        first.trim().to_string()
+                    }
+                    _ => format!("Microsoft (R) C/C++ Compiler ({})", path.display()),
+                }
+            } else {
+                let out = Command::new(&path).arg("--version").output();
+                match out {
+                    Ok(o) if o.status.success() => {
+                        let text = String::from_utf8_lossy(&o.stdout);
+                        text.lines().next().unwrap_or("").trim().to_string()
+                    }
+                    _ => format!("Found at {}", path.display()),
+                }
+            };
+
+            return ToolCheck {
+                name: "C++ compiler",
+                required: true,
+                found: true,
+                details,
+            };
+        }
+    }
+
+    ToolCheck {
+        name: "C++ compiler",
+        required: true,
+        found: false,
+        details: "No C++ compiler found (need g++, clang++, or MSVC cl.exe)".to_string(),
+    }
+}
+
+fn check_ninja() -> ToolCheck {
+    match which::which("ninja") {
+        Ok(path) => {
+            let output = Command::new(&path).arg("--version").output();
+            let details = match output {
+                Ok(out) if out.status.success() => {
+                    format!("ninja {}", String::from_utf8_lossy(&out.stdout).trim())
+                }
+                _ => format!("Found at {}", path.display()),
+            };
+            ToolCheck {
+                name: "ninja",
+                required: false,
+                found: true,
+                details,
+            }
+        }
+        Err(_) => ToolCheck {
+            name: "ninja",
+            required: false,
+            found: false,
+            details: "Not found (recommended for ultra-fast builds)".to_string(),
+        },
+    }
+}
+
+fn check_path() -> ToolCheck {
+    let cache = match beru_core::cache::BeruCache::default_location() {
+        Ok(c) => c,
+        Err(_) => {
+            return ToolCheck {
+                name: "PATH",
+                required: false,
+                found: false,
+                details: "Could not determine ~/.beru location".to_string(),
+            };
+        }
+    };
+
+    let bin_dir = cache.bin_dir();
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
+    let paths = std::env::split_paths(&path_var);
+
+    for p in paths {
+        if p == bin_dir {
+            return ToolCheck {
+                name: "PATH",
+                required: false,
+                found: true,
+                details: format!("{} is in PATH", bin_dir.display()),
+            };
+        }
+    }
+
+    ToolCheck {
+        name: "PATH",
+        required: false,
+        found: false,
+        details: format!("{} is NOT in PATH", bin_dir.display()),
+    }
+}
+
+fn print_remediation(_missing: &[&ToolCheck]) {
+    println!("\nTo install missing prerequisites on your operating system:\n");
+
+    #[cfg(target_os = "linux")]
+    {
+        if which::which("apt-get").is_ok() {
+            println!("  Debian/Ubuntu:");
+            println!(
+                "    sudo apt-get update && sudo apt-get install -y build-essential cmake git ninja-build"
+            );
+        } else if which::which("dnf").is_ok() {
+            println!("  Fedora/RHEL:");
+            println!("    sudo dnf install -y gcc-c++ cmake git ninja-build");
+        } else if which::which("pacman").is_ok() {
+            println!("  Arch Linux:");
+            println!("    sudo pacman -S --noconfirm base-devel cmake git ninja");
+        } else {
+            println!(
+                "  Please install git, cmake (>= 3.20), a C++ compiler (g++/clang++), and ninja via your package manager."
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        println!("  macOS (Homebrew):");
+        println!("    brew install cmake ninja git gcc");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        println!("  Windows (winget):");
+        println!("    winget install --id Kitware.CMake -e");
+        println!("    winget install --id Ninja-build.Ninja -e");
+        println!("    winget install --id Git.Git -e");
+        println!();
+        println!("  For Visual Studio C++ Compiler (MSVC):");
+        println!(
+            "    winget install Microsoft.VisualStudio.2022.BuildTools --override \"--passive --add Microsoft.VisualStudio.Workload.VCTools\""
+        );
+    }
+
+    println!();
+}
+
+fn run_prereq_install() -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        println!("Attempting automated installation via winget...");
+        let mut cmd = Command::new("winget");
+        cmd.args([
+            "install",
+            "--id",
+            "Kitware.CMake",
+            "-e",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+        ]);
+        let _ = cmd.status();
+        let mut cmd = Command::new("winget");
+        cmd.args([
+            "install",
+            "--id",
+            "Git.Git",
+            "-e",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+        ]);
+        let _ = cmd.status();
+        let mut cmd = Command::new("winget");
+        cmd.args([
+            "install",
+            "--id",
+            "Ninja-build.Ninja",
+            "-e",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+        ]);
+        let _ = cmd.status();
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        println!("Attempting automated installation via brew...");
+        let status = Command::new("brew")
+            .args(["install", "cmake", "ninja", "git", "gcc"])
+            .status()
+            .context("failed to invoke brew")?;
+        if !status.success() {
+            bail!("brew install exited with error code");
+        }
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        println!("Please run the package manager commands printed above with sudo.");
+        Ok(())
+    }
+}
+
+fn add_beru_to_path() -> Result<()> {
+    let cache = beru_core::cache::BeruCache::default_location()?;
+    cache.ensure_dirs()?;
+    let bin_dir = cache.bin_dir();
+
+    #[cfg(windows)]
+    {
+        let bin_str = bin_dir.to_string_lossy().to_string();
+        let script = format!(
+            "$current = [Environment]::GetEnvironmentVariable('PATH', 'User'); \
+             if ($current -notlike '*{0}*') {{ \
+                 [Environment]::SetEnvironmentVariable('PATH', \"$current;{0}\", 'User'); \
+             }}",
+            bin_str
+        );
+
+        let status = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &script])
+            .status()
+            .context("failed to update user PATH via PowerShell")?;
+
+        if !status.success() {
+            bail!("PowerShell PATH update command failed");
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    {
+        let home = dirs::home_dir().context("could not locate home directory")?;
+        let bin_str = bin_dir.to_string_lossy();
+        let export_line = format!("\n# Added by Beru\nexport PATH=\"{}:$PATH\"\n", bin_str);
+
+        let candidate_rcs = [
+            home.join(".bashrc"),
+            home.join(".zshrc"),
+            home.join(".profile"),
+        ];
+
+        let mut updated_any = false;
+        for rc in &candidate_rcs {
+            if rc.exists() {
+                let content = std::fs::read_to_string(rc).unwrap_or_default();
+                if !content.contains(&*bin_str) {
+                    use std::io::Write;
+                    let mut file = std::fs::OpenOptions::new().append(true).open(rc)?;
+                    file.write_all(export_line.as_bytes())?;
+                    updated_any = true;
+                }
+            }
+        }
+
+        if !updated_any {
+            // Default to writing ~/.profile
+            let profile = home.join(".profile");
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(profile)?;
+            file.write_all(export_line.as_bytes())?;
+        }
+
+        Ok(())
+    }
+}
