@@ -21,26 +21,13 @@ pub fn exec(args: InitArgs) -> Result<()> {
         .and_then(|n| n.to_str())
         .unwrap_or("my-project");
 
-    // Sanitize into a valid Beru package name:
-    // lowercase, replace underscores/spaces with hyphens, strip invalid chars
-    let name: String = raw_name
-        .to_lowercase()
-        .chars()
-        .map(|c| match c {
-            '_' | ' ' => '-',
-            c if c.is_ascii_alphanumeric() || c == '-' => c,
-            _ => '-',
-        })
-        .collect();
-
-    // Ensure the name starts with a letter and is at least 2 chars
-    let name = if name.is_empty()
-        || !name.chars().next().unwrap_or('0').is_ascii_lowercase()
-        || name.len() < 2
-    {
-        "my-project".to_string()
+    // Sanitize into a valid Beru package name using manifest rules
+    let name = if beru_manifest::is_valid_package_name(raw_name) {
+        raw_name.to_string()
+    } else if let Some(suggested) = beru_manifest::suggest_package_name(raw_name) {
+        suggested
     } else {
-        name
+        "my-project".to_string()
     };
 
     if cwd.join("Beru.toml").exists() {
