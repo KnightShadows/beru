@@ -72,7 +72,8 @@ impl<'a> BeruProvider<'a> {
         Ok(())
     }
 
-    fn fetch_available_versions(&self, package: &str) -> anyhow::Result<Vec<SemanticVersion>> {
+    /// Fetch all available versions for a given package name.
+    pub fn fetch_available_versions(&self, package: &str) -> anyhow::Result<Vec<SemanticVersion>> {
         if package == "root" {
             return Ok(vec![SemanticVersion::new(0, 0, 0)]);
         }
@@ -272,7 +273,7 @@ impl<'a> DependencyProvider for BeruProvider<'a> {
 }
 
 /// Parse a version string into its (major, minor, patch) components.
-fn parse_version_parts(s: &str) -> anyhow::Result<(u32, u32, u32)> {
+pub fn parse_version_parts(s: &str) -> anyhow::Result<(u32, u32, u32)> {
     let clean = s.trim_start_matches('v');
     let parts: Vec<&str> = clean.split('.').collect();
     let major: u32 = parts
@@ -293,7 +294,8 @@ fn parse_version_parts(s: &str) -> anyhow::Result<(u32, u32, u32)> {
     Ok((major, minor, patch))
 }
 
-fn parse_version(s: &str) -> anyhow::Result<SemanticVersion> {
+/// Parse a semantic version string.
+pub fn parse_version(s: &str) -> anyhow::Result<SemanticVersion> {
     let (major, minor, patch) = parse_version_parts(s)?;
     Ok(SemanticVersion::new(major, minor, patch))
 }

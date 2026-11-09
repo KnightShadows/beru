@@ -4,6 +4,7 @@ mod cache;
 mod check;
 mod init;
 mod new;
+mod outdated;
 mod remove;
 mod resolve;
 mod run;

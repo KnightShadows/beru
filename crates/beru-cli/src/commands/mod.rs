@@ -9,6 +9,7 @@ pub mod clean;
 pub mod index;
 pub mod init;
 pub mod new;
+pub mod outdated;
 pub mod remove;
 pub mod resolve;
 pub mod run;
@@ -53,6 +54,9 @@ pub enum Command {
     /// Update dependencies in Beru.lock to their latest compatible versions
     Update(update::UpdateArgs),
 
+    /// Display outdated dependencies compared to the registry
+    Outdated(outdated::OutdatedArgs),
+
     /// Display a tree of dependencies
     Tree(tree::TreeArgs),
 
@@ -77,6 +81,7 @@ pub fn run(cmd: Command) -> Result<()> {
         Command::Add(args) => add::exec(args),
         Command::Remove(args) => remove::exec(args),
         Command::Update(args) => update::exec(args),
+        Command::Outdated(args) => outdated::exec(args),
         Command::Tree(args) => tree::exec(args),
         Command::Check(args) => check::exec(args),
         Command::Test(args) => test::exec(args),
