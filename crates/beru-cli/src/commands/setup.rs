@@ -39,6 +39,17 @@ pub fn exec(args: SetupArgs) -> Result<()> {
     }
 
     println!(
+        "\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        style(" ██████╗ ███████╗██████╗ ██╗   ██╗").cyan().bold(),
+        style(" ██╔══██╗██╔════╝██╔══██╗██║   ██║").cyan().bold(),
+        style(" ██████╔╝█████╗  ██████╔╝██║   ██║").cyan().bold(),
+        style(" ██╔══██╗██╔══╝  ██╔══██╗██║   ██║").cyan().bold(),
+        style(" ██████╔╝███████╗██║  ██║╚██████╔╝").cyan().bold(),
+        style(" ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ").cyan().bold(),
+        style(" [ 01100010 01100101 01110010 01110101 ]").dim(),
+    );
+
+    println!(
         "\n{}",
         style("=== Beru Environment & Toolchain Setup ===")
             .cyan()
