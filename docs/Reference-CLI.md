@@ -48,6 +48,9 @@ The following table provides a high-level overview of the available subcommands.
 | **[`beru new`](Reference-CLI-new.md)** | Scaffolding | Creates a new directory and populates it with a standardized project layout. |
 | **[`beru init`](Reference-CLI-init.md)** | Scaffolding | Initializes a `Beru.toml` manifest within an existing directory without destroying existing code. |
 | **[`beru add`](Reference-CLI-add.md)** | Dependency | Adds a new dependency directly to the `Beru.toml` manifest, dynamically mutating the AST. |
+| **[`beru remove`](Reference-CLI-remove.md)** | Dependency | Removes a dependency from `Beru.toml` (aliased as `beru rm`) and updates `Beru.lock`. |
+| **[`beru update`](Reference-CLI-update.md)** | Dependency | Updates dependencies in `Beru.lock` to the latest semver-compatible versions. |
+| **[`beru outdated`](Reference-CLI-outdated.md)** | Analysis | Displays dependencies that have newer versions available in the registry. |
 | **[`beru tree`](Reference-CLI-tree.md)** | Analysis | Visualizes the resolved dependency graph using an optimal DAG traversal. |
 | **[`beru resolve`](Reference-CLI-resolve.md)** | Resolution | Executes the PubGrub algorithm to compute a deterministic dependency graph and writes it to `Beru.lock`. |
 | **[`beru check`](Reference-CLI-check.md)** | Orchestration | Performs a fast, syntax-only compilation check bypassing the linker to ensure rapid feedback. |
