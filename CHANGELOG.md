@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.2] - 2026-11-10
+
+### ⚡ Performance & Internal Architecture
+* **Toolchain & Compiler Probe Caching**: Caches compiler detection (`(CXX, PATH)`) in memory and persists compiler metadata + C++20/23/26 feature probe results under `~/.beru/cache/toolchain-probe.toml` keyed by compiler binary fingerprint to skip redundant subprocess spawns and test compiles.
+* **Cached Tool Lookups**: Shared in-memory PATH resolution cache (`which_cached`) eliminates repeated PATH walks for `cmake`, `sh`, and `ctest`.
+* **Parallel Dependency Prep & Single-Pass Inspection**: Overlaps uncached non-vendored source fetches, parallelizes cached dependency prefix introspection, reuses already-loaded `recipe.toml` files, skips redundant prefix scans in `generate_toolchain_cmake_with_config`, and skips reading `*ConfigVersion.cmake` files.
+* **HTTP Pooling & Immutable Git SHA Short-Circuit**: Reuses a pooled `reqwest::blocking::Client` with per-destination fetch locking and skips remote `git fetch` / `git ls-remote` when an immutable 40-char commit SHA is already present or pinned.
+* **Incremental Write-If-Changed**: Avoids rewriting unchanged `beru-toolchain.cmake`, `beru-override.cmake`, `CMakeLists.txt` (ad-hoc), and `Beru.lock` files so CMake preserves timestamps and skips unnecessary reconfigures.
+* **Batched `beru fmt`**: Groups `clang-format --check` and `-i` calls into bounded command-line batches instead of spawning one subprocess per source file, with single-file fallback only on failing batches.
+* **Faster `beru search`**: Reads only the `[package]` section via `Recipe::read_package_metadata` and inspects only the latest semver directory per package in the registry index.
+* **Job Propagation & Shared Helpers**: Propagated `BERU_JOBS` into `beru test` (`ctest -j`), deduplicated build/check toolchain preparation, and added `.agent/` architecture/performance onboarding docs.
+
 ## [0.6.1] - 2026-11-10
 
 ### 🐛 Bug Fixes & Improvements
