@@ -1,4 +1,4 @@
-use crate::{CMakeDependency, build_project, generate_toolchain_cmake};
+use crate::{build_project, generate_toolchain_cmake, prepare_locked_dependencies};
 use anyhow::Result;
 use beru_core::cache::BeruCache;
 use beru_manifest::BeruManifest;
@@ -67,62 +67,8 @@ pub fn build_adhoc(
     }
 
     let abi_hash = abi_profile.hash();
-    let mut prefix_paths = Vec::new();
-    let mut cmake_deps = Vec::new();
-
-    for pkg in &lockfile.packages {
-        let opt_dep = manifest.dependencies.get(&pkg.name);
-
-        let install_prefix = crate::resolve_and_build_locked_dep(
-            pkg,
-            opt_dep,
-            cache,
-            &abi_hash,
-            project_dir,
-            profile,
-        )?;
-        prefix_paths.push(install_prefix);
-
-        let recipe = beru_recipe::resolve_recipe(
-            &pkg.name,
-            Some(&pkg.version),
-            project_dir,
-            std::env::current_exe()
-                .ok()
-                .as_deref()
-                .and_then(|p| p.parent()),
-            Some(&cache.recipes_dir()),
-            Some(&cache.index_dir()),
-        )?;
-
-        let package_name = if let Some((ref r, _)) = recipe {
-            r.export
-                .cmake_package
-                .clone()
-                .or_else(|| Some(pkg.name.clone()))
-        } else {
-            Some(pkg.name.clone())
-        };
-
-        let mut targets = if let Some((ref r, _)) = recipe {
-            let mut t = r.export.cmake_targets.clone();
-            if t.is_empty() {
-                t = r.export.link_libs.clone();
-            }
-            t
-        } else {
-            Vec::new()
-        };
-
-        if targets.is_empty() {
-            targets.push(format!("{}::{}", pkg.name, pkg.name));
-        }
-
-        cmake_deps.push(CMakeDependency {
-            package_name,
-            targets,
-        });
-    }
+    let (prefix_paths, cmake_deps) =
+        prepare_locked_dependencies(&lockfile, manifest, cache, &abi_hash, project_dir, profile)?;
 
     std::fs::create_dir_all(&build_dir)?;
 

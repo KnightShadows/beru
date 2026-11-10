@@ -16,6 +16,20 @@ pub fn cmake_configure(
     let cmake = which::which("cmake")
         .context("cmake not found on PATH. Install CMake (https://cmake.org) to use Beru.")?;
 
+    let mut pass_toolchain_flag = toolchain_file.is_some();
+    let cache_file = build_dir.join("CMakeCache.txt");
+    if cache_file.exists() {
+        if is_cmake_cache_valid(&cache_file, source_dir, toolchain_file) {
+            pass_toolchain_flag = false;
+        } else {
+            let _ = std::fs::remove_file(&cache_file);
+            let cmake_files = build_dir.join("CMakeFiles");
+            if cmake_files.exists() {
+                let _ = std::fs::remove_dir_all(&cmake_files);
+            }
+        }
+    }
+
     let mut cmd = Command::new(&cmake);
     cmd.arg("-S").arg(source_dir);
     cmd.arg("-B").arg(build_dir);
@@ -24,7 +38,7 @@ pub fn cmake_configure(
         install_prefix.display()
     ));
 
-    if let Some(tc) = toolchain_file {
+    if pass_toolchain_flag && let Some(tc) = toolchain_file {
         cmd.arg(format!("-DCMAKE_TOOLCHAIN_FILE={}", tc.display()));
     }
 
@@ -218,4 +232,94 @@ pub fn build_project(
     }
 
     Ok(())
+}
+
+fn is_cmake_cache_valid(
+    cache_file: &Path,
+    source_dir: &Path,
+    toolchain_file: Option<&Path>,
+) -> bool {
+    let Ok(content) = std::fs::read_to_string(cache_file) else {
+        return false;
+    };
+
+    let mut home_matches = false;
+    let mut toolchain_matches = toolchain_file.is_none();
+
+    for line in content.lines() {
+        if let Some(val) = line.strip_prefix("CMAKE_HOME_DIRECTORY:INTERNAL=") {
+            home_matches = cmake_paths_match(Path::new(val.trim()), source_dir);
+        } else if let Some(tc) = toolchain_file
+            && let Some(val) = line
+                .strip_prefix("CMAKE_TOOLCHAIN_FILE:FILEPATH=")
+                .or_else(|| line.strip_prefix("CMAKE_TOOLCHAIN_FILE:PATH="))
+                .or_else(|| line.strip_prefix("CMAKE_TOOLCHAIN_FILE:STRING="))
+        {
+            toolchain_matches = cmake_paths_match(Path::new(val.trim()), tc);
+        }
+    }
+
+    home_matches && toolchain_matches
+}
+
+fn cmake_paths_match(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| -> String {
+        let resolved = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+        let raw = resolved.to_string_lossy();
+        let stripped = raw.strip_prefix(r"\\?\").unwrap_or(&raw);
+        let fwd = stripped
+            .replace('\\', "/")
+            .trim_end_matches('/')
+            .to_string();
+        if cfg!(windows) {
+            fwd.to_ascii_lowercase()
+        } else {
+            fwd
+        }
+    };
+    norm(a) == norm(b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cmake_cache_validation() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src_proj");
+        std::fs::create_dir_all(&src).unwrap();
+        let tc = src.join("beru-toolchain.cmake");
+        std::fs::write(&tc, "# tc").unwrap();
+        let cache = dir.path().join("CMakeCache.txt");
+
+        let norm_src = src.canonicalize().unwrap();
+        let norm_src_s = norm_src
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .replace('\\', "/");
+        let norm_tc_s = tc
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .replace('\\', "/");
+
+        std::fs::write(
+            &cache,
+            format!(
+                "CMAKE_HOME_DIRECTORY:INTERNAL={}\nCMAKE_TOOLCHAIN_FILE:FILEPATH={}\n",
+                norm_src_s, norm_tc_s
+            ),
+        )
+        .unwrap();
+        assert!(is_cmake_cache_valid(&cache, &src, Some(&tc)));
+
+        std::fs::write(
+            &cache,
+            format!("CMAKE_HOME_DIRECTORY:INTERNAL={}\n", norm_src_s),
+        )
+        .unwrap();
+        assert!(!is_cmake_cache_valid(&cache, &src, Some(&tc)));
+    }
 }

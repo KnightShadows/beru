@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.1] - 2026-11-10
+
+### 🐛 Bug Fixes & Improvements
+* **Automatic CMake/Include Introspection**: Inspects installed dependency prefixes for CMake package configs (`*Config.cmake` / `*-config.cmake`), imported targets (`*Targets.cmake`), `INTERFACE_INCLUDE_DIRECTORIES`, `pkg-config` `.pc` include flags, and compiled libraries on disk—fixing header-only and nested-include packages (such as `eigen` under `include/eigen3` with `Eigen3::Eigen`) even when recipes omit `[export]` metadata.
+* **No Bogus Linker Flags for Header-Only Packages**: Avoids emitting fallback raw `-l<pkg>` library links in `beru-toolchain.cmake` when a dependency is header-only or installs no libraries under `lib/`/`lib64/`.
+* **Recipe Schema Compatibility**: Added `args` alias for `cmake-args` in `[build]` (plus snake_case `[export]` aliases) to support community index recipes.
+* **CMake Cache & Toolchain Reuse**: Validates `build/CMakeCache.txt` before re-configuring to eliminate spurious `CMAKE_TOOLCHAIN_FILE` unused-CLI warnings and reset stale build caches automatically.
+
 ## [0.6.0] - 2026-11-09
 
 ### 🚀 Major New Features & Enhancements

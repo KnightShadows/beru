@@ -1,16 +1,15 @@
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use console::style;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tracing::{debug, info};
 
 use beru_build::{
-    build_project, generate_toolchain_cmake_with_config, resolve_and_build_locked_dep,
+    build_project, generate_toolchain_cmake_with_config, prepare_locked_dependencies,
 };
 use beru_core::cache::BeruCache;
 use beru_core::toolchain;
 use beru_manifest::BeruManifest;
-use beru_recipe::{beru_exe_dir, resolve_recipe};
 
 /// Arguments for `beru build`.
 #[derive(Debug, Args, Clone)]
@@ -170,63 +169,18 @@ pub fn exec_in_dir(project_dir: &Path, args: BuildArgs) -> Result<()> {
         generated
     };
 
-    let mut prefix_paths: Vec<PathBuf> = Vec::new();
-    let mut cmake_deps: Vec<beru_build::CMakeDependency> = Vec::new();
-
     if !lockfile.packages.is_empty() {
         println!("{} dependencies...", style("Building").cyan().bold(),);
     }
 
-    for pkg in &lockfile.packages {
-        let opt_dep = manifest.dependencies.get(&pkg.name);
-
-        let install_prefix = resolve_and_build_locked_dep(
-            pkg,
-            opt_dep,
-            &cache,
-            &abi_hash,
-            project_dir,
-            &args.profile,
-        )?;
-        prefix_paths.push(install_prefix);
-
-        let recipe = resolve_recipe(
-            &pkg.name,
-            Some(&pkg.version),
-            project_dir,
-            beru_exe_dir().as_deref(),
-            Some(&cache.recipes_dir()),
-            Some(&cache.index_dir()),
-        )?;
-
-        let package_name = if let Some((ref r, _)) = recipe {
-            r.export
-                .cmake_package
-                .clone()
-                .or_else(|| Some(pkg.name.clone()))
-        } else {
-            Some(pkg.name.clone())
-        };
-
-        let mut targets = if let Some((ref r, _)) = recipe {
-            let mut t = r.export.cmake_targets.clone();
-            if t.is_empty() {
-                t = r.export.link_libs.clone();
-            }
-            t
-        } else {
-            Vec::new()
-        };
-
-        if targets.is_empty() {
-            targets.push(format!("{}::{}", pkg.name, pkg.name));
-        }
-
-        cmake_deps.push(beru_build::CMakeDependency {
-            package_name,
-            targets,
-        });
-    }
+    let (prefix_paths, cmake_deps) = prepare_locked_dependencies(
+        &lockfile,
+        &manifest,
+        &cache,
+        &abi_hash,
+        project_dir,
+        &args.profile,
+    )?;
 
     let profile_cfg = manifest.profile.get(&args.profile);
     let opt_str = profile_cfg.and_then(|p| p.optimization.as_ref().map(|o| o.to_string()));

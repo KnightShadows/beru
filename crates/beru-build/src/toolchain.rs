@@ -1,14 +1,20 @@
 use anyhow::{Context, Result};
-use std::path::Path;
+use beru_recipe::Recipe;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 /// Metadata about a dependency for CMake linking.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CMakeDependency {
-    /// The CMake package name to find (e.g. `fmt`).
+    /// The CMake package name to find (e.g. `fmt`, `Eigen3`).
     pub package_name: Option<String>,
-    /// The CMake targets to link (e.g. `fmt::fmt`).
+    /// The CMake targets to link (e.g. `fmt::fmt`, `Eigen3::Eigen`).
     pub targets: Vec<String>,
+    /// Raw library names to link only when CMake targets are unavailable.
+    pub link_libs: Vec<String>,
+    /// Additional include directories exported by this dependency.
+    pub include_dirs: Vec<PathBuf>,
 }
 
 /// Metadata about a system dependency for CMake linking.
@@ -186,39 +192,46 @@ pub fn generate_toolchain_cmake_with_config(
     content.push_str("# ---------------------------------------------------------\n");
     content.push_str("macro(beru_link_dependencies TARGET_NAME)\n");
 
+    let mut seen_includes: HashSet<String> = HashSet::new();
+
     for path in prefix_paths {
-        let escaped = path.to_string_lossy().replace('\\', "/");
-        content.push_str(&format!(
-            "    target_include_directories(${{TARGET_NAME}} PRIVATE \"{}/include\")\n",
-            escaped
-        ));
-        content.push_str(&format!(
-            "    target_link_directories(${{TARGET_NAME}} PRIVATE \"{}/lib\" \"{}/lib64\")\n",
-            escaped, escaped
-        ));
+        if path.exists() {
+            for inc in collect_prefix_include_dirs(path) {
+                emit_include_dir(&mut content, &mut seen_includes, &inc);
+            }
+            for lib_sub in ["lib", "lib64"] {
+                let lib_dir = path.join(lib_sub);
+                if lib_dir.is_dir() {
+                    content.push_str(&format!(
+                        "    target_link_directories(${{TARGET_NAME}} PRIVATE \"{}\")\n",
+                        normalize_cmake_path(&lib_dir)
+                    ));
+                }
+            }
+        } else {
+            emit_include_dir(&mut content, &mut seen_includes, &path.join("include"));
+            let escaped = normalize_cmake_path(path);
+            content.push_str(&format!(
+                "    target_link_directories(${{TARGET_NAME}} PRIVATE \"{}/lib\" \"{}/lib64\")\n",
+                escaped, escaped
+            ));
+        }
     }
 
     let mut sorted_deps = cmake_deps.iter().collect::<Vec<_>>();
     sorted_deps.sort_by_key(|d| d.package_name.as_deref().unwrap_or(""));
 
+    for dep in &sorted_deps {
+        for inc in &dep.include_dirs {
+            emit_include_dir(&mut content, &mut seen_includes, inc);
+        }
+    }
+
     for dep in sorted_deps {
         if let Some(pkg) = &dep.package_name {
             content.push_str(&format!("    find_package({} QUIET)\n", pkg));
         }
-        for target in &dep.targets {
-            let fallback_name = dep.package_name.as_deref().unwrap_or(target);
-            if target == fallback_name {
-                content.push_str(&format!(
-                    "    target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n",
-                    target
-                ));
-            } else {
-                content.push_str(&format!(
-                    "    if(TARGET {})\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n    else()\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n    endif()\n",
-                    target, target, fallback_name
-                ));
-            }
-        }
+        emit_dep_link_lines(&mut content, dep);
     }
 
     if !config.system_deps.is_empty() {
@@ -256,6 +269,566 @@ pub fn generate_toolchain_cmake_with_config(
     info!("generated {}", output_path.display());
 
     Ok(())
+}
+
+/// Inspect an installed dependency prefix (combined with an optional recipe)
+/// to determine its CMake package, exported targets, raw link libraries, and
+/// include directories.
+pub fn inspect_installed_dependency(
+    pkg_name: &str,
+    install_prefix: &Path,
+    recipe: Option<&Recipe>,
+) -> CMakeDependency {
+    let cmake_info = discover_cmake_info(install_prefix, pkg_name);
+    let recipe_dirs = recipe
+        .map(|r| r.export.include_dirs.as_slice())
+        .unwrap_or(&[]);
+    let include_dirs = collect_include_dirs_with(install_prefix, &cmake_info, recipe_dirs);
+
+    let package_name = recipe
+        .and_then(|r| r.export.cmake_package.clone())
+        .or(cmake_info.package_name);
+
+    let targets = if let Some(r) = recipe
+        && !r.export.cmake_targets.is_empty()
+    {
+        r.export.cmake_targets.clone()
+    } else {
+        cmake_info.targets
+    };
+
+    let link_libs = if let Some(r) = recipe {
+        if !r.export.link_libs.is_empty() {
+            r.export.link_libs.clone()
+        } else if r.is_header_only() {
+            Vec::new()
+        } else {
+            discover_link_libs(install_prefix)
+        }
+    } else {
+        discover_link_libs(install_prefix)
+    };
+
+    CMakeDependency {
+        package_name,
+        targets,
+        link_libs,
+        include_dirs,
+    }
+}
+
+fn normalize_cmake_path(path: &Path) -> String {
+    let raw = path.to_string_lossy();
+    let stripped = raw.strip_prefix(r"\\?\").unwrap_or(&raw);
+    stripped.replace('\\', "/")
+}
+
+fn emit_include_dir(content: &mut String, seen_includes: &mut HashSet<String>, dir: &Path) {
+    let escaped = normalize_cmake_path(dir);
+    if seen_includes.insert(escaped.clone()) {
+        content.push_str(&format!(
+            "    target_include_directories(${{TARGET_NAME}} PRIVATE \"{}\")\n",
+            escaped
+        ));
+    }
+}
+
+fn emit_dep_link_lines(content: &mut String, dep: &CMakeDependency) {
+    let joined_libs = dep.link_libs.join(" ");
+    match dep.targets.as_slice() {
+        [] => {
+            if !joined_libs.is_empty() {
+                content.push_str(&format!(
+                    "    target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n",
+                    joined_libs
+                ));
+            }
+        }
+        [target] => {
+            if joined_libs.is_empty() {
+                content.push_str(&format!(
+                    "    if(TARGET {0})\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {0})\n    endif()\n",
+                    target
+                ));
+            } else {
+                content.push_str(&format!(
+                    "    if(TARGET {0})\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {0})\n    else()\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {1})\n    endif()\n",
+                    target, joined_libs
+                ));
+            }
+        }
+        targets => {
+            if joined_libs.is_empty() {
+                for target in targets {
+                    content.push_str(&format!(
+                        "    if(TARGET {0})\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {0})\n    endif()\n",
+                        target
+                    ));
+                }
+            } else {
+                content.push_str("    set(_beru_linked_any FALSE)\n");
+                for target in targets {
+                    content.push_str(&format!(
+                        "    if(TARGET {0})\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {0})\n        set(_beru_linked_any TRUE)\n    endif()\n",
+                        target
+                    ));
+                }
+                content.push_str(&format!(
+                    "    if(NOT _beru_linked_any)\n        target_link_libraries(${{TARGET_NAME}} PRIVATE {})\n    endif()\n",
+                    joined_libs
+                ));
+            }
+        }
+    }
+}
+
+fn collect_prefix_include_dirs(prefix: &Path) -> Vec<PathBuf> {
+    let cmake_info = discover_cmake_info(prefix, "");
+    collect_include_dirs_with(prefix, &cmake_info, &[])
+}
+
+fn push_unique_dir(dirs: &mut Vec<PathBuf>, seen: &mut HashSet<String>, dir: PathBuf) {
+    if dir.is_dir() && seen.insert(normalize_cmake_path(&dir)) {
+        dirs.push(dir);
+    }
+}
+
+fn collect_include_dirs_with(
+    prefix: &Path,
+    cmake_info: &DiscoveredCMake,
+    recipe_include_dirs: &[String],
+) -> Vec<PathBuf> {
+    let pc_includes = discover_pkgconfig_include_dirs(prefix);
+    let mut dirs = Vec::new();
+    let mut seen = HashSet::new();
+
+    for rel in recipe_include_dirs {
+        let candidate = Path::new(rel);
+        let resolved = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            prefix.join(candidate)
+        };
+        push_unique_dir(&mut dirs, &mut seen, resolved);
+    }
+
+    push_unique_dir(&mut dirs, &mut seen, prefix.join("include"));
+    for dir in &cmake_info.include_dirs {
+        push_unique_dir(&mut dirs, &mut seen, dir.clone());
+    }
+    for dir in &pc_includes {
+        push_unique_dir(&mut dirs, &mut seen, dir.clone());
+    }
+
+    if dirs.len() <= 1
+        && cmake_info.package_name.is_none()
+        && pc_includes.is_empty()
+        && recipe_include_dirs.is_empty()
+        && let Some(nested) = discover_nested_umbrella_include(&prefix.join("include"))
+    {
+        push_unique_dir(&mut dirs, &mut seen, nested);
+    }
+    dirs
+}
+
+#[derive(Debug, Default)]
+struct DiscoveredCMake {
+    package_name: Option<String>,
+    targets: Vec<String>,
+    include_dirs: Vec<PathBuf>,
+}
+
+fn discover_cmake_info(prefix: &Path, pkg_name: &str) -> DiscoveredCMake {
+    if !prefix.is_dir() {
+        return DiscoveredCMake::default();
+    }
+
+    let mut cmake_files = Vec::new();
+    for root_sub in ["lib", "lib64", "share", "cmake"] {
+        let dir = prefix.join(root_sub);
+        if dir.is_dir() {
+            collect_cmake_files_bounded(&dir, 0, 5, &mut cmake_files);
+        }
+    }
+
+    let mut config_candidates: Vec<(String, PathBuf)> = Vec::new();
+    let mut raw_targets = Vec::new();
+    let mut include_dirs = Vec::new();
+    let mut seen_targets = HashSet::new();
+    let mut seen_includes = HashSet::new();
+
+    for path in &cmake_files {
+        let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+
+        if let Some(pkg) = extract_cmake_config_pkg_name(fname) {
+            config_candidates.push((pkg, path.clone()));
+        }
+
+        if let Ok(text) = std::fs::read_to_string(path) {
+            for target in parse_cmake_imported_targets(&text) {
+                if seen_targets.insert(target.clone()) {
+                    raw_targets.push(target);
+                }
+            }
+            for inc in parse_cmake_interface_includes(&text, prefix) {
+                if seen_includes.insert(normalize_cmake_path(&inc)) {
+                    include_dirs.push(inc);
+                }
+            }
+        }
+    }
+
+    let package_name = pick_best_cmake_package(config_candidates, pkg_name);
+    let targets = filter_default_targets(raw_targets);
+
+    DiscoveredCMake {
+        package_name,
+        targets,
+        include_dirs,
+    }
+}
+
+fn collect_cmake_files_bounded(dir: &Path, depth: usize, max_depth: usize, out: &mut Vec<PathBuf>) {
+    if depth > max_depth {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut sorted: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    sorted.sort();
+    for path in sorted {
+        if path.is_dir() {
+            collect_cmake_files_bounded(&path, depth + 1, max_depth, out);
+        } else if path.extension().and_then(|s| s.to_str()) == Some("cmake") {
+            out.push(path);
+        }
+    }
+}
+
+fn extract_cmake_config_pkg_name(fname: &str) -> Option<String> {
+    let lower = fname.to_ascii_lowercase();
+    if lower.ends_with("configversion.cmake")
+        || lower.ends_with("-config-version.cmake")
+        || lower.ends_with("targets.cmake")
+        || lower.ends_with("-targets.cmake")
+        || lower.ends_with("dependencies.cmake")
+        || lower.starts_with("use")
+    {
+        return None;
+    }
+    if let Some(stem) = fname.strip_suffix("Config.cmake")
+        && !stem.is_empty()
+    {
+        return Some(stem.to_string());
+    }
+    if let Some(stem) = fname.strip_suffix("-config.cmake")
+        && !stem.is_empty()
+    {
+        return Some(stem.to_string());
+    }
+    None
+}
+
+fn pick_best_cmake_package(
+    mut candidates: Vec<(String, PathBuf)>,
+    pkg_name: &str,
+) -> Option<String> {
+    if candidates.is_empty() {
+        return None;
+    }
+    if pkg_name.is_empty() {
+        return candidates.into_iter().next().map(|(name, _)| name);
+    }
+
+    let norm_pkg: String = pkg_name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
+
+    candidates.sort_by_key(|(name, path)| {
+        let norm_cand: String = name
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .map(|c| c.to_ascii_lowercase())
+            .collect();
+        let rank = if norm_cand == norm_pkg {
+            0
+        } else if norm_cand.starts_with(&norm_pkg) || norm_pkg.starts_with(&norm_cand) {
+            1
+        } else if norm_cand.contains(&norm_pkg) {
+            2
+        } else {
+            3
+        };
+        (rank, path.components().count(), name.len())
+    });
+
+    candidates.into_iter().next().map(|(name, _)| name)
+}
+
+fn parse_cmake_imported_targets(content: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+    let cleaned: String = content
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let lower = cleaned.to_ascii_lowercase();
+    let mut search_from = 0;
+    while let Some(rel_idx) = lower[search_from..].find("add_library(") {
+        let start = search_from + rel_idx + "add_library(".len();
+        let Some(end_rel) = cleaned[start..].find(')') else {
+            break;
+        };
+        let inner = &cleaned[start..start + end_rel];
+        let tokens: Vec<&str> = inner.split_whitespace().collect();
+        if tokens.iter().any(|t| t.eq_ignore_ascii_case("IMPORTED"))
+            && !tokens.iter().any(|t| t.eq_ignore_ascii_case("ALIAS"))
+            && let Some(raw_name) = tokens.first()
+        {
+            let name = raw_name.trim_matches('"').trim();
+            if !name.is_empty() && !name.starts_with('_') && !name.contains("${") {
+                targets.push(name.to_string());
+            }
+        }
+        search_from = start + end_rel + 1;
+    }
+    targets
+}
+
+fn filter_default_targets(raw: Vec<String>) -> Vec<String> {
+    if raw.len() <= 1 {
+        return raw;
+    }
+
+    let has_compiled = raw.iter().any(|t| {
+        let low = t.to_ascii_lowercase();
+        !low.ends_with("-header-only") && !low.ends_with("_header_only")
+    });
+    let after_header_filter: Vec<String> = if has_compiled {
+        raw.into_iter()
+            .filter(|t| {
+                let low = t.to_ascii_lowercase();
+                !low.ends_with("-header-only") && !low.ends_with("_header_only")
+            })
+            .collect()
+    } else {
+        raw
+    };
+
+    let has_non_main = after_header_filter.iter().any(|t| !is_main_target(t));
+    if has_non_main {
+        after_header_filter
+            .into_iter()
+            .filter(|t| !is_main_target(t))
+            .collect()
+    } else {
+        after_header_filter
+    }
+}
+
+fn is_main_target(target: &str) -> bool {
+    let low = target.to_ascii_lowercase();
+    low.ends_with("_main") || low.ends_with("-main") || low.ends_with("withmain")
+}
+
+fn parse_cmake_interface_includes(content: &str, prefix: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut search_from = 0;
+
+    while let Some(rel_idx) = content[search_from..].find("INTERFACE_INCLUDE_DIRECTORIES") {
+        let after = &content[search_from + rel_idx + "INTERFACE_INCLUDE_DIRECTORIES".len()..];
+        let trimmed = after.trim_start();
+        let val_token = if let Some(rest) = trimmed.strip_prefix('"') {
+            rest.split('"').next().unwrap_or("")
+        } else {
+            trimmed
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_end_matches(')')
+        };
+
+        for item in val_token.split(';') {
+            if let Some(resolved) = resolve_cmake_include_item(item, prefix) {
+                dirs.push(resolved);
+            }
+        }
+
+        search_from += rel_idx + "INTERFACE_INCLUDE_DIRECTORIES".len();
+    }
+
+    dirs
+}
+
+fn resolve_cmake_include_item(item: &str, prefix: &Path) -> Option<PathBuf> {
+    let mut s = item.trim();
+    if s.is_empty() || s.contains("$<BUILD_INTERFACE:") {
+        return None;
+    }
+    while let Some(inner) = s
+        .strip_prefix("$<INSTALL_INTERFACE:")
+        .and_then(|v| v.strip_suffix('>'))
+    {
+        s = inner.trim();
+    }
+    if s.contains("$<") {
+        return None;
+    }
+
+    let cleaned = s
+        .replace("${_IMPORT_PREFIX}/", "")
+        .replace("${_IMPORT_PREFIX}\\", "")
+        .replace("${_IMPORT_PREFIX}", "")
+        .replace("${PACKAGE_PREFIX_DIR}/", "")
+        .replace("${PACKAGE_PREFIX_DIR}\\", "")
+        .replace("${PACKAGE_PREFIX_DIR}", "");
+
+    if cleaned.contains("${") {
+        return None;
+    }
+
+    let rel = cleaned.trim_start_matches(['/', '\\']);
+    let candidate = if rel.is_empty() {
+        prefix.to_path_buf()
+    } else {
+        let p = Path::new(rel);
+        if p.is_absolute() {
+            if p.starts_with(prefix) {
+                p.to_path_buf()
+            } else {
+                return None;
+            }
+        } else {
+            prefix.join(p)
+        }
+    };
+
+    if candidate.is_dir() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn discover_pkgconfig_include_dirs(prefix: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    for sub in ["lib/pkgconfig", "lib64/pkgconfig", "share/pkgconfig"] {
+        let pc_dir = prefix.join(sub);
+        let Ok(entries) = std::fs::read_dir(pc_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("pc") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(path) else {
+                continue;
+            };
+            for line in text.lines() {
+                let trimmed = line.trim();
+                let Some(cflags) = trimmed
+                    .strip_prefix("Cflags:")
+                    .or_else(|| trimmed.strip_prefix("cflags:"))
+                else {
+                    continue;
+                };
+                for tok in cflags.split_whitespace() {
+                    if let Some(inc) = tok.strip_prefix("-I") {
+                        let resolved_str = inc
+                            .replace("${includedir}", "include")
+                            .replace("${prefix}/", "")
+                            .replace("${pcfiledir}/../..", "");
+                        let rel = resolved_str.trim_start_matches(['/', '\\']);
+                        if !rel.is_empty() && !rel.contains("${") {
+                            let candidate = prefix.join(rel);
+                            if candidate.is_dir() {
+                                dirs.push(candidate);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    dirs
+}
+
+fn discover_nested_umbrella_include(include_dir: &Path) -> Option<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(include_dir) else {
+        return None;
+    };
+    let mut subdirs = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            return None;
+        }
+        if path.is_dir() {
+            subdirs.push(path);
+        }
+    }
+    if subdirs.len() != 1 {
+        return None;
+    }
+    let only_dir = &subdirs[0];
+    let has_nested_dir = std::fs::read_dir(only_dir)
+        .ok()?
+        .flatten()
+        .any(|e| e.path().is_dir());
+    if has_nested_dir {
+        Some(only_dir.clone())
+    } else {
+        None
+    }
+}
+
+fn discover_link_libs(prefix: &Path) -> Vec<String> {
+    let mut libs = Vec::new();
+    let mut seen = HashSet::new();
+
+    for sub in ["lib", "lib64"] {
+        let lib_dir = prefix.join(sub);
+        let Ok(entries) = std::fs::read_dir(lib_dir) else {
+            continue;
+        };
+        let mut sorted: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+        sorted.sort();
+        for path in sorted {
+            if !path.is_file() {
+                continue;
+            }
+            let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if let Some(lib_name) = extract_link_lib_name(fname)
+                && seen.insert(lib_name.clone())
+            {
+                libs.push(lib_name);
+            }
+        }
+    }
+
+    libs
+}
+
+fn extract_link_lib_name(fname: &str) -> Option<String> {
+    if let Some(stem) = fname.strip_suffix(".lib") {
+        return (!stem.is_empty()).then(|| stem.to_string());
+    }
+    for ext in [".dll.a", ".a", ".so", ".dylib"] {
+        if let Some(stem) = fname.strip_suffix(ext) {
+            let clean = stem.strip_prefix("lib").unwrap_or(stem);
+            return (!clean.is_empty()).then(|| clean.to_string());
+        }
+    }
+    None
 }
 
 /// Convert a `cxx-std` string (e.g. `"c++20"`) to a CMake standard number (e.g. `"20"`).
@@ -342,5 +915,71 @@ mod tests {
         assert!(content.contains("find_package(Threads REQUIRED)"));
         assert!(content.contains("Threads::Threads"));
         assert!(content.contains("pkg_check_modules(BERU_SYS_1 REQUIRED zlib)"));
+    }
+
+    #[test]
+    fn test_inspect_installed_eigen_layout_without_export_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("eigen-3.4.0");
+        std::fs::create_dir_all(prefix.join("include/eigen3/Eigen")).unwrap();
+        std::fs::write(prefix.join("include/eigen3/Eigen/Dense"), "// eigen dense").unwrap();
+
+        let cmake_dir = prefix.join("share/eigen3/cmake");
+        std::fs::create_dir_all(&cmake_dir).unwrap();
+        std::fs::write(cmake_dir.join("Eigen3Config.cmake"), "# eigen config").unwrap();
+        std::fs::write(cmake_dir.join("Eigen3ConfigVersion.cmake"), "# version").unwrap();
+        std::fs::write(
+            cmake_dir.join("Eigen3Targets.cmake"),
+            r#"
+add_library(Eigen3::Eigen INTERFACE IMPORTED)
+set_target_properties(Eigen3::Eigen PROPERTIES
+  INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include/eigen3"
+)
+"#,
+        )
+        .unwrap();
+
+        let dep = inspect_installed_dependency("eigen", &prefix, None);
+        assert_eq!(dep.package_name.as_deref(), Some("Eigen3"));
+        assert_eq!(dep.targets, vec!["Eigen3::Eigen"]);
+        assert!(dep.link_libs.is_empty());
+        assert!(dep.include_dirs.contains(&prefix.join("include/eigen3")));
+
+        let tc_path = dir.path().join("beru-toolchain.cmake");
+        generate_toolchain_cmake(&tc_path, "c++17", "debug", &[prefix.as_path()], &[dep]).unwrap();
+        let content = std::fs::read_to_string(&tc_path).unwrap();
+        assert!(content.contains("find_package(Eigen3 QUIET)"));
+        assert!(content.contains("Eigen3::Eigen"));
+        assert!(content.contains("include/eigen3"));
+        assert!(!content.contains("PRIVATE eigen\n"));
+    }
+
+    #[test]
+    fn test_inspect_installed_compiled_lib_and_pkgconfig() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("fmt-11.0.2");
+        std::fs::create_dir_all(prefix.join("include/fmt")).unwrap();
+        std::fs::write(prefix.join("include/fmt/core.h"), "// core").unwrap();
+        std::fs::create_dir_all(prefix.join("lib/cmake/fmt")).unwrap();
+        std::fs::write(prefix.join("lib/cmake/fmt/fmt-config.cmake"), "# fmt").unwrap();
+        std::fs::write(
+            prefix.join("lib/cmake/fmt/fmt-targets.cmake"),
+            r#"
+add_library(fmt::fmt STATIC IMPORTED)
+add_library(fmt::fmt-header-only INTERFACE IMPORTED)
+set_target_properties(fmt::fmt PROPERTIES
+  INTERFACE_INCLUDE_DIRECTORIES "$<INSTALL_INTERFACE:include>"
+)
+"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(prefix.join("lib")).unwrap();
+        std::fs::write(prefix.join("lib/libfmtd.a"), b"archive").unwrap();
+
+        let dep = inspect_installed_dependency("fmt", &prefix, None);
+        assert_eq!(dep.package_name.as_deref(), Some("fmt"));
+        assert_eq!(dep.targets, vec!["fmt::fmt"]);
+        assert_eq!(dep.link_libs, vec!["fmtd"]);
+        assert_eq!(dep.include_dirs, vec![prefix.join("include")]);
     }
 }

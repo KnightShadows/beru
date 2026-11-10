@@ -74,7 +74,7 @@ pub struct RecipeBuild {
     pub system: String,
 
     /// Extra CMake arguments (e.g. `-DFMT_TEST=OFF`).
-    #[serde(rename = "cmake-args", default)]
+    #[serde(rename = "cmake-args", alias = "args", alias = "cmake_args", default)]
     pub cmake_args: Vec<String>,
 
     /// Shell commands to execute if system = "custom".
@@ -87,19 +87,19 @@ pub struct RecipeBuild {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct RecipeExport {
     /// Relative paths to include directories.
-    #[serde(rename = "include-dirs", default)]
+    #[serde(rename = "include-dirs", alias = "include_dirs", default)]
     pub include_dirs: Vec<String>,
 
     /// Library names to link against (without `lib` prefix or extension).
-    #[serde(rename = "link-libs", default)]
+    #[serde(rename = "link-libs", alias = "link_libs", default)]
     pub link_libs: Vec<String>,
 
     /// CMake package name for `find_package()` interop.
-    #[serde(rename = "cmake-package", default)]
+    #[serde(rename = "cmake-package", alias = "cmake_package", default)]
     pub cmake_package: Option<String>,
 
     /// CMake targets (e.g. `fmt::fmt`) for `target_link_libraries()`.
-    #[serde(rename = "cmake-targets", default)]
+    #[serde(rename = "cmake-targets", alias = "cmake_targets", default)]
     pub cmake_targets: Vec<String>,
 }
 
@@ -244,6 +244,29 @@ commands = ["./do_something.sh"]
         assert!(
             err.to_string()
                 .contains("must explicitly define an [export] section")
+        );
+    }
+
+    #[test]
+    fn test_parse_build_args_alias() {
+        let toml = r#"
+[package]
+name = "eigen"
+version = "3.4.0"
+
+[source]
+git = "https://gitlab.com/libeigen/eigen.git"
+tag = "3.4.0"
+
+[build]
+system = "cmake"
+args = ["-DBUILD_TESTING=OFF", "-DBUILD_EXAMPLES=OFF"]
+"#;
+        let recipe = Recipe::parse_toml(toml).unwrap();
+        assert_eq!(recipe.package.name, "eigen");
+        assert_eq!(
+            recipe.build.cmake_args,
+            vec!["-DBUILD_TESTING=OFF", "-DBUILD_EXAMPLES=OFF"]
         );
     }
 }

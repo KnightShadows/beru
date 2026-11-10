@@ -3,8 +3,66 @@ use console::style;
 use std::path::{Path, PathBuf};
 
 use beru_core::cache::BeruCache;
-use beru_manifest::Dependency;
-use beru_recipe::{beru_exe_dir, resolve_recipe};
+use beru_manifest::{BeruLock, BeruManifest, Dependency};
+use beru_recipe::{Recipe, beru_exe_dir, resolve_recipe};
+
+/// Resolve, build (if not cached), and inspect all dependencies in a lockfile.
+///
+/// Returns `(prefix_paths, cmake_dependencies)` ready to pass into toolchain
+/// generation.
+pub fn prepare_locked_dependencies(
+    lockfile: &BeruLock,
+    manifest: &BeruManifest,
+    cache: &BeruCache,
+    abi_hash: &str,
+    project_dir: &Path,
+    profile: &str,
+) -> Result<(Vec<PathBuf>, Vec<crate::CMakeDependency>)> {
+    let mut prefix_paths = Vec::with_capacity(lockfile.packages.len());
+    let mut cmake_deps = Vec::with_capacity(lockfile.packages.len());
+
+    for pkg in &lockfile.packages {
+        let opt_dep = manifest.dependencies.get(&pkg.name);
+        let install_prefix =
+            resolve_and_build_locked_dep(pkg, opt_dep, cache, abi_hash, project_dir, profile)?;
+        let recipe = find_dep_recipe(&pkg.name, &pkg.version, project_dir, cache)?;
+        let cmake_dep = crate::inspect_installed_dependency(
+            &pkg.name,
+            &install_prefix,
+            recipe.as_ref().map(|(r, _)| r),
+        );
+        prefix_paths.push(install_prefix);
+        cmake_deps.push(cmake_dep);
+    }
+
+    Ok((prefix_paths, cmake_deps))
+}
+
+fn find_dep_recipe(
+    name: &str,
+    version: &str,
+    project_dir: &Path,
+    cache: &BeruCache,
+) -> Result<Option<(Recipe, PathBuf)>> {
+    let mut recipe = resolve_recipe(
+        name,
+        Some(version),
+        project_dir,
+        beru_exe_dir().as_deref(),
+        Some(&cache.recipes_dir()),
+        Some(&cache.index_dir()),
+    )?;
+
+    let vendored_dir = project_dir.join("vendor").join(format!("{name}-{version}"));
+    if recipe.is_none()
+        && vendored_dir.join("recipe.toml").exists()
+        && let Ok(r) = Recipe::from_file(&vendored_dir.join("recipe.toml"))
+    {
+        recipe = Some((r, vendored_dir.join("recipe.toml")));
+    }
+
+    Ok(recipe)
+}
 
 /// Resolve a single dependency: find its source, build it, cache the result.
 /// Returns the install prefix path for the built dependency.
@@ -37,23 +95,8 @@ pub fn resolve_and_build_locked_dep(
         pkg.source,
     );
 
-    let mut recipe = resolve_recipe(
-        name,
-        Some(version),
-        project_dir,
-        beru_exe_dir().as_deref(),
-        Some(&cache.recipes_dir()),
-        Some(&cache.index_dir()),
-    )?;
-
-    // Check if package source is vendored locally in project
+    let recipe = find_dep_recipe(name, version, project_dir, cache)?;
     let vendored_dir = project_dir.join("vendor").join(format!("{name}-{version}"));
-    if recipe.is_none()
-        && vendored_dir.join("recipe.toml").exists()
-        && let Ok(r) = beru_recipe::Recipe::from_file(&vendored_dir.join("recipe.toml"))
-    {
-        recipe = Some((r, vendored_dir.join("recipe.toml")));
-    }
 
     let source_dir = if vendored_dir.exists() {
         println!(
