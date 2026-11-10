@@ -128,6 +128,22 @@ impl Recipe {
         Ok(recipe)
     }
 
+    /// Parse only the `[package]` section of a `recipe.toml` string, skipping
+    /// `[source]`, `[build]`, `[export]`, and `[dependencies]` deserialization.
+    pub fn parse_package_metadata(content: &str) -> Result<RecipePackage, anyhow::Error> {
+        #[derive(Deserialize)]
+        struct PackageOnly {
+            package: RecipePackage,
+        }
+        Ok(toml::from_str::<PackageOnly>(content)?.package)
+    }
+
+    /// Read and parse only the `[package]` metadata from a `recipe.toml` file path.
+    pub fn read_package_metadata(path: &std::path::Path) -> anyhow::Result<RecipePackage> {
+        let content = std::fs::read_to_string(path)?;
+        Self::parse_package_metadata(&content)
+    }
+
     /// Parse a `recipe.toml` from a file path.
     pub fn from_file(path: &std::path::Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;

@@ -117,26 +117,42 @@ pub fn resolve_graph(
                     checksum = Some(sha);
                 }
             }
-        } else if let Ok(Some((recipe, _))) = beru_recipe::resolve_recipe(
-            &name,
-            Some(&version.to_string()),
-            project_dir,
-            beru_exe_dir.as_deref(),
-            Some(&cache.recipes_dir()),
-            Some(&cache.index_dir()),
-        ) {
-            if let Some(sha) = &recipe.source.sha256 {
-                checksum = Some(sha.clone());
-            } else if let (Some(git_url), Some(git_tag)) = (&recipe.source.git, &recipe.source.tag)
-            {
-                if let Ok(sha) = resolve_git_tag_to_sha(git_url, git_tag) {
-                    checksum = Some(sha);
-                } else {
-                    tracing::warn!(
-                        "Failed to resolve git tag {} for {} to a commit SHA",
-                        git_tag,
-                        name
-                    );
+        } else {
+            let cached_recipe = provider
+                .recipes_cache
+                .borrow()
+                .get(&(name.clone(), version))
+                .cloned();
+            let resolved_recipe = if cached_recipe.is_some() {
+                cached_recipe
+            } else if let Ok(Some((r, _))) = beru_recipe::resolve_recipe(
+                &name,
+                Some(&version.to_string()),
+                project_dir,
+                beru_exe_dir.as_deref(),
+                Some(&cache.recipes_dir()),
+                Some(&cache.index_dir()),
+            ) {
+                Some(r)
+            } else {
+                None
+            };
+
+            if let Some(recipe) = resolved_recipe {
+                if let Some(sha) = &recipe.source.sha256 {
+                    checksum = Some(sha.clone());
+                } else if let (Some(git_url), Some(git_tag)) =
+                    (&recipe.source.git, &recipe.source.tag)
+                {
+                    if let Ok(sha) = resolve_git_tag_to_sha(git_url, git_tag) {
+                        checksum = Some(sha);
+                    } else {
+                        tracing::warn!(
+                            "Failed to resolve git tag {} for {} to a commit SHA",
+                            git_tag,
+                            name
+                        );
+                    }
                 }
             }
         }
@@ -159,8 +175,8 @@ pub fn resolve_graph(
 }
 
 fn resolve_git_tag_to_sha(url: &str, tag: &str) -> Result<String> {
-    if std::env::var("BERU_OFFLINE").is_ok() {
-        anyhow::bail!("cannot query remote git tags for '{}' in offline mode", url);
+    if beru_recipe::is_git_commit_sha(tag) {
+        return Ok(tag.to_string());
     }
 
     if std::env::var("BERU_OFFLINE").is_ok() {

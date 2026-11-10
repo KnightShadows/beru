@@ -110,8 +110,8 @@ fn run_tests_in_dir(dir: &Path, profile: &str, filter: Option<&str>) -> Result<(
         return Ok(());
     }
 
-    let ctest =
-        which::which("ctest").context("ctest not found on PATH. Install CMake to run tests.")?;
+    let ctest = beru_core::fs::which_cached("ctest")
+        .context("ctest not found on PATH. Install CMake to run tests.")?;
 
     let mut cmd = Command::new(&ctest);
     cmd.current_dir(&build_dir);
@@ -130,7 +130,9 @@ fn run_tests_in_dir(dir: &Path, profile: &str, filter: Option<&str>) -> Result<(
         cmd.arg("-R").arg(f);
     }
 
-    if let Ok(parallelism) = std::thread::available_parallelism() {
+    if let Ok(jobs) = std::env::var("BERU_JOBS") {
+        cmd.arg("-j").arg(jobs);
+    } else if let Ok(parallelism) = std::thread::available_parallelism() {
         cmd.arg("-j").arg(parallelism.get().to_string());
     } else {
         cmd.arg("-j").arg("1");

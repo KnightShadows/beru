@@ -62,7 +62,7 @@ pub fn exec(args: RemoveArgs) -> Result<()> {
                 packages: Vec::new(),
             };
             if let Ok(lock_str) = empty_lock.to_string() {
-                let _ = fs::write(&lock_path, lock_str);
+                let _ = beru_core::fs::write_str_if_changed(&lock_path, &lock_str);
             }
         } else if let Ok(cache) = beru_core::cache::BeruCache::default_location()
             && let Ok(lock) = beru_resolve::resolve_graph(
@@ -73,7 +73,7 @@ pub fn exec(args: RemoveArgs) -> Result<()> {
             )
             && let Ok(lock_str) = lock.to_string()
         {
-            let _ = fs::write(&lock_path, lock_str);
+            let _ = beru_core::fs::write_str_if_changed(&lock_path, &lock_str);
         }
     }
 

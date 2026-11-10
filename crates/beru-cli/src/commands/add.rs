@@ -119,7 +119,7 @@ pub fn exec(args: AddArgs) -> Result<()> {
         )
         && let Ok(lock_str) = lock.to_string()
     {
-        let _ = fs::write(project_dir.join("Beru.lock"), lock_str);
+        let _ = beru_core::fs::write_str_if_changed(&project_dir.join("Beru.lock"), &lock_str);
     }
 
     Ok(())

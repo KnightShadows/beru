@@ -1,15 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use console::style;
-use std::path::Path;
-use tracing::{debug, info};
 
-use crate::commands::build::resolve_target;
-use beru_build::{
-    build_project, generate_toolchain_cmake_with_config, prepare_locked_dependencies,
-};
+use crate::commands::build::{prepare_project_toolchain, resolve_target};
+use beru_build::build_project;
 use beru_core::cache::BeruCache;
-use beru_core::toolchain;
 use beru_manifest::BeruManifest;
 
 /// Arguments for `beru check`.
@@ -68,97 +63,17 @@ pub fn exec(args: CheckArgs) -> Result<()> {
     let cache = BeruCache::default_location()?;
     cache.ensure_dirs()?;
 
-    let abi_profile = toolchain::build_abi_profile(
-        &manifest.package.cxx_std,
-        &args.profile,
-        manifest.build.shared_libs,
-        vec![],
-    )?;
-
-    let abi_hash = abi_profile.hash();
-    info!("ABI profile: {}", abi_profile);
-    debug!("ABI hash: {}", abi_hash);
-
-    let lock_path = project_dir.join("Beru.lock");
-    let lockfile = if lock_path.exists() {
-        let existing =
-            beru_manifest::BeruLock::from_dir(&project_dir).context("Failed to parse Beru.lock")?;
-        let is_stale = manifest
-            .dependencies
-            .keys()
-            .any(|name| !existing.packages.iter().any(|pkg| &pkg.name == name));
-        if is_stale {
-            info!("Beru.lock is out of date, resolving dependencies...");
-            let beru_exe = std::env::current_exe().ok();
-            let generated = beru_resolve::resolve_graph(&manifest, &cache, &project_dir, beru_exe)?;
-            std::fs::write(&lock_path, generated.to_string()?)
-                .context("Failed to write Beru.lock")?;
-            generated
-        } else {
-            existing
-        }
-    } else {
-        info!("Beru.lock not found, resolving dependencies...");
-        let beru_exe = std::env::current_exe().ok();
-        let generated = beru_resolve::resolve_graph(&manifest, &cache, &project_dir, beru_exe)?;
-        std::fs::write(&lock_path, generated.to_string()?).context("Failed to write Beru.lock")?;
-        generated
-    };
-
-    let (prefix_paths, cmake_deps) = prepare_locked_dependencies(
-        &lockfile,
-        &manifest,
-        &cache,
-        &abi_hash,
-        &project_dir,
-        &args.profile,
-    )?;
-
-    let profile_cfg = manifest.profile.get(&args.profile);
-    let opt_str = profile_cfg.and_then(|p| p.optimization.as_ref().map(|o| o.to_string()));
-    let warnings = profile_cfg.and_then(|p| p.warnings.as_deref());
-    let lto = profile_cfg.map(|p| p.lto).unwrap_or(false);
-    let sanitizers = profile_cfg.map(|p| p.sanitizers.as_slice()).unwrap_or(&[]);
-    let flags = profile_cfg.map(|p| p.flags.as_slice()).unwrap_or(&[]);
-
-    let sys_deps: Vec<beru_build::SystemCMakeDependency> = manifest
-        .system_dependencies
-        .iter()
-        .map(|(name, dep)| beru_build::SystemCMakeDependency {
-            package_name: dep.cmake_package(),
-            targets: dep.cmake_targets(name),
-            pkg_config: dep.pkg_config().map(|s| s.to_string()),
-            required: dep.is_required(),
-        })
-        .collect();
-
-    let toolchain_config = beru_build::ToolchainConfig {
-        optimization: opt_str.as_deref(),
-        warnings,
-        lto,
-        sanitizers,
-        flags,
-        system_deps: &sys_deps,
-    };
-
-    let toolchain_path = project_dir.join("beru-toolchain.cmake");
-    let prefix_refs: Vec<&Path> = prefix_paths.iter().map(|p| p.as_path()).collect();
-    generate_toolchain_cmake_with_config(
-        &toolchain_path,
-        &manifest.package.cxx_std,
-        &args.profile,
-        &prefix_refs,
-        &cmake_deps,
-        &toolchain_config,
-    )?;
+    let toolchain_path =
+        prepare_project_toolchain(&project_dir, &manifest, &cache, &args.profile, false)?;
 
     let build_dir = project_dir.join("build");
 
     let override_path = project_dir.join("beru-override.cmake");
-    std::fs::write(
+    beru_core::fs::write_str_if_changed(
         &override_path,
         "set(CMAKE_CXX_LINK_EXECUTABLE \"cmake -E echo\" CACHE STRING \"\" FORCE)\nset(CMAKE_C_LINK_EXECUTABLE \"cmake -E echo\" CACHE STRING \"\" FORCE)\n",
-    ).context("failed to write override.cmake")?;
+    )
+    .context("failed to write override.cmake")?;
 
     let override_arg = format!(
         "-DCMAKE_USER_MAKE_RULES_OVERRIDE={}",

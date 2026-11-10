@@ -46,11 +46,7 @@ pub fn build_adhoc(
         hasher.update(b"@");
         hasher.update(pkg.version.as_bytes());
     }
-    let hash = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<String>();
+    let hash = beru_core::fs::hex_encode(&hasher.finalize());
 
     let build_dir = cache.adhoc_build_dir(&hash);
     let binary_name = entry_file.file_stem().unwrap().to_string_lossy();
@@ -93,7 +89,7 @@ pub fn build_adhoc(
         beru_link_dependencies({})\n",
         sanitized_name, absolute_entry_str, sanitized_name
     );
-    std::fs::write(build_dir.join("CMakeLists.txt"), cmakelists)?;
+    beru_core::fs::write_str_if_changed(&build_dir.join("CMakeLists.txt"), &cmakelists)?;
 
     let toolchain_file = build_dir.join("beru-toolchain.cmake");
     let prefix_refs: Vec<&Path> = prefix_paths.iter().map(|p| p.as_path()).collect();

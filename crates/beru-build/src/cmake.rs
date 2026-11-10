@@ -3,6 +3,22 @@ use std::path::Path;
 use std::process::Command;
 use tracing::{debug, info};
 
+fn cached_cmake_path() -> Result<std::path::PathBuf> {
+    beru_core::fs::which_cached("cmake")
+        .context("cmake not found on PATH. Install CMake (https://cmake.org) to use Beru.")
+}
+
+fn run_inherited(mut cmd: Command, action: &str) -> Result<()> {
+    let status = cmd
+        .status()
+        .with_context(|| format!("failed to run {action}"))?;
+
+    if !status.success() {
+        bail!("{action} failed (exit code: {:?})", status.code());
+    }
+    Ok(())
+}
+
 /// Invoke CMake to configure a project.
 ///
 /// Runs: `cmake -S <source_dir> -B <build_dir> [extra_args...]`
@@ -13,8 +29,7 @@ pub fn cmake_configure(
     extra_args: &[String],
     toolchain_file: Option<&Path>,
 ) -> Result<()> {
-    let cmake = which::which("cmake")
-        .context("cmake not found on PATH. Install CMake (https://cmake.org) to use Beru.")?;
+    let cmake = cached_cmake_path()?;
 
     let mut pass_toolchain_flag = toolchain_file.is_some();
     let cache_file = build_dir.join("CMakeCache.txt");
@@ -53,27 +68,14 @@ pub fn cmake_configure(
     );
     debug!("full command: {:?}", cmd);
 
-    let output = cmd
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .output()
-        .with_context(|| "failed to run cmake configure")?;
-
-    if !output.status.success() {
-        bail!(
-            "cmake configure failed (exit code: {:?})",
-            output.status.code()
-        );
-    }
-
-    Ok(())
+    run_inherited(cmd, "cmake configure")
 }
 
 /// Invoke CMake to build a configured project.
 ///
 /// Runs: `cmake --build <build_dir> --parallel [--config <build_type>]`
 pub fn cmake_build(build_dir: &Path, target: Option<&str>, build_type: Option<&str>) -> Result<()> {
-    let cmake = which::which("cmake").context("cmake not found on PATH")?;
+    let cmake = cached_cmake_path()?;
 
     info!("building: cmake --build {}", build_dir.display());
 
@@ -93,24 +95,14 @@ pub fn cmake_build(build_dir: &Path, target: Option<&str>, build_type: Option<&s
         cmd.arg("--config").arg(bt);
     }
 
-    let output = cmd
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .output()
-        .context("failed to run cmake build")?;
-
-    if !output.status.success() {
-        bail!("cmake build failed (exit code: {:?})", output.status.code());
-    }
-
-    Ok(())
+    run_inherited(cmd, "cmake build")
 }
 
 /// Invoke CMake to install built artifacts.
 ///
 /// Runs: `cmake --install <build_dir> [--config <build_type>]`
 pub fn cmake_install(build_dir: &Path, build_type: Option<&str>) -> Result<()> {
-    let cmake = which::which("cmake").context("cmake not found on PATH")?;
+    let cmake = cached_cmake_path()?;
 
     info!("installing: cmake --install {}", build_dir.display());
 
@@ -120,20 +112,7 @@ pub fn cmake_install(build_dir: &Path, build_type: Option<&str>) -> Result<()> {
         cmd.arg("--config").arg(bt);
     }
 
-    let output = cmd
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .output()
-        .context("failed to run cmake install")?;
-
-    if !output.status.success() {
-        bail!(
-            "cmake install failed (exit code: {:?})",
-            output.status.code()
-        );
-    }
-
-    Ok(())
+    run_inherited(cmd, "cmake install")
 }
 
 /// Full build pipeline for a dependency using CMake:

@@ -1,14 +1,40 @@
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use tracing::{debug, info};
 
 use beru_core::cache::BeruCache;
 
+static HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+static DEST_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+
+fn http_client() -> Result<&'static reqwest::blocking::Client> {
+    if let Some(client) = HTTP_CLIENT.get() {
+        return Ok(client);
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()?;
+    let _ = HTTP_CLIENT.set(client);
+    Ok(HTTP_CLIENT.get().expect("HTTP_CLIENT initialized"))
+}
+
+fn dest_lock(path: &Path) -> Arc<Mutex<()>> {
+    let map = DEST_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = map.lock().unwrap_or_else(|e| e.into_inner());
+    Arc::clone(
+        guard
+            .entry(path.to_path_buf())
+            .or_insert_with(|| Arc::new(Mutex::new(()))),
+    )
+}
+
 /// Download and verify a source tarball from a URL.
 ///
 /// 1. If the tarball is already cached (by SHA-256), skip the download.
-/// 2. Download to a temporary file.
+/// 2. Download to a temporary buffer (reusing pooled HTTP connections).
 /// 3. Verify the SHA-256 checksum.
 /// 4. Extract into the cache.
 ///
@@ -16,6 +42,15 @@ use beru_core::cache::BeruCache;
 pub fn fetch_tarball(cache: &BeruCache, url: &str, expected_sha256: &str) -> Result<PathBuf> {
     let dest_dir = cache.source_dir(expected_sha256);
 
+    if dest_dir.exists() {
+        debug!("source already cached at {}", dest_dir.display());
+        return Ok(dest_dir);
+    }
+
+    let lock = dest_lock(&dest_dir);
+    let _dest_guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+
+    // Re-check inside lock in case another worker just completed extraction.
     if dest_dir.exists() {
         debug!("source already cached at {}", dest_dir.display());
         return Ok(dest_dir);
@@ -30,9 +65,7 @@ pub fn fetch_tarball(cache: &BeruCache, url: &str, expected_sha256: &str) -> Res
 
     info!("downloading {}", url);
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
-        .build()?;
+    let client = http_client()?;
     let response = client
         .get(url)
         .send()
@@ -48,7 +81,7 @@ pub fn fetch_tarball(cache: &BeruCache, url: &str, expected_sha256: &str) -> Res
 
     let mut hasher = Sha256::new();
     hasher.update(&bytes);
-    let actual_hash = hex_encode(&hasher.finalize());
+    let actual_hash = beru_core::fs::hex_encode(&hasher.finalize());
 
     if actual_hash != expected_sha256 {
         bail!(
@@ -85,6 +118,8 @@ pub fn fetch_tarball(cache: &BeruCache, url: &str, expected_sha256: &str) -> Res
 /// Returns the path to the cloned repository.
 pub fn fetch_git(cache: &BeruCache, url: &str, pin: Option<&str>) -> Result<PathBuf> {
     let repo_dir = cache.git_repo_dir(url);
+    let lock = dest_lock(&repo_dir);
+    let _repo_guard = lock.lock().unwrap_or_else(|e| e.into_inner());
 
     if !repo_dir.exists() {
         if std::env::var("BERU_OFFLINE").is_ok() {
@@ -122,6 +157,31 @@ pub fn fetch_git(cache: &BeruCache, url: &str, pin: Option<&str>) -> Result<Path
         }
     } else {
         debug!("git repo already cloned at {}", repo_dir.display());
+        if let Some(p) = pin
+            && is_git_commit_sha(p)
+        {
+            if let Ok(head_out) = std::process::Command::new("git")
+                .args(["rev-parse", "--verify", "HEAD"])
+                .current_dir(&repo_dir)
+                .output()
+                && head_out.status.success()
+                && String::from_utf8_lossy(&head_out.stdout)
+                    .trim()
+                    .eq_ignore_ascii_case(p)
+            {
+                debug!("cached git repo already checked out at commit {}", p);
+                return Ok(repo_dir);
+            }
+            if let Ok(co_out) = std::process::Command::new("git")
+                .args(["checkout", "--force", p])
+                .current_dir(&repo_dir)
+                .output()
+                && co_out.status.success()
+            {
+                debug!("checked out cached git commit {} without network fetch", p);
+                return Ok(repo_dir);
+            }
+        }
     }
 
     if std::env::var("BERU_OFFLINE").is_ok() {
@@ -206,8 +266,9 @@ pub fn find_source_root(extracted_dir: &Path) -> Result<PathBuf> {
     Ok(extracted_dir.to_path_buf())
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+/// Check whether a Git ref string is a full 40-character hexadecimal commit SHA.
+pub fn is_git_commit_sha(refspec: &str) -> bool {
+    refspec.len() == 40 && refspec.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 #[cfg(test)]

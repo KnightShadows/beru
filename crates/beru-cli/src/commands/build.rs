@@ -32,6 +32,12 @@ pub fn exec(args: BuildArgs) -> Result<()> {
 }
 
 pub fn exec_in_dir(project_dir: &Path, args: BuildArgs) -> Result<()> {
+    let cache = BeruCache::default_location()?;
+    cache.ensure_dirs()?;
+    exec_in_dir_with_cache(project_dir, args, &cache)
+}
+
+fn exec_in_dir_with_cache(project_dir: &Path, args: BuildArgs, cache: &BeruCache) -> Result<()> {
     let manifest = BeruManifest::from_dir(project_dir)
         .context("failed to parse Beru.toml (are you in a Beru project directory?)")?;
 
@@ -49,7 +55,7 @@ pub fn exec_in_dir(project_dir: &Path, args: BuildArgs) -> Result<()> {
                     found = true;
                     let mut member_args = args.clone();
                     member_args.package = None;
-                    exec_in_dir(&member_dir, member_args)?;
+                    exec_in_dir_with_cache(&member_dir, member_args, cache)?;
                     break;
                 }
             }
@@ -70,7 +76,7 @@ pub fn exec_in_dir(project_dir: &Path, args: BuildArgs) -> Result<()> {
                 }
                 let mut member_args = args.clone();
                 member_args.package = None;
-                exec_in_dir(&member_dir, member_args)?;
+                exec_in_dir_with_cache(&member_dir, member_args, cache)?;
             }
             return Ok(());
         }
@@ -129,12 +135,41 @@ pub fn exec_in_dir(project_dir: &Path, args: BuildArgs) -> Result<()> {
         manifest.package.cxx_std,
     );
 
-    let cache = BeruCache::default_location()?;
-    cache.ensure_dirs()?;
+    let toolchain_path =
+        prepare_project_toolchain(project_dir, &manifest, cache, &args.profile, true)?;
 
+    let build_dir = project_dir.join("build");
+    println!("{} project...", style("Compiling").green().bold(),);
+    build_project(
+        project_dir,
+        &build_dir,
+        &toolchain_path,
+        &args.profile,
+        Some(resolved_target_name.as_str()),
+        &[],
+    )?;
+
+    println!(
+        "  {} {} built successfully",
+        style("Finished").green().bold(),
+        resolved_target_name,
+    );
+
+    Ok(())
+}
+
+/// Resolve lockfile (updating if missing or stale), prepare cached dependencies,
+/// and synthesize `beru-toolchain.cmake` in `project_dir`.
+pub(crate) fn prepare_project_toolchain(
+    project_dir: &Path,
+    manifest: &BeruManifest,
+    cache: &BeruCache,
+    profile: &str,
+    print_deps_banner: bool,
+) -> Result<std::path::PathBuf> {
     let abi_profile = toolchain::build_abi_profile(
         &manifest.package.cxx_std,
-        &args.profile,
+        profile,
         manifest.build.shared_libs,
         vec![],
     )?;
@@ -154,8 +189,8 @@ pub fn exec_in_dir(project_dir: &Path, args: BuildArgs) -> Result<()> {
         if is_stale {
             info!("Beru.lock is out of date, resolving dependencies...");
             let beru_exe = std::env::current_exe().ok();
-            let generated = beru_resolve::resolve_graph(&manifest, &cache, project_dir, beru_exe)?;
-            std::fs::write(&lock_path, generated.to_string()?)
+            let generated = beru_resolve::resolve_graph(manifest, cache, project_dir, beru_exe)?;
+            beru_core::fs::write_str_if_changed(&lock_path, &generated.to_string()?)
                 .context("Failed to write Beru.lock")?;
             generated
         } else {
@@ -164,25 +199,20 @@ pub fn exec_in_dir(project_dir: &Path, args: BuildArgs) -> Result<()> {
     } else {
         info!("Beru.lock not found, resolving dependencies...");
         let beru_exe = std::env::current_exe().ok();
-        let generated = beru_resolve::resolve_graph(&manifest, &cache, project_dir, beru_exe)?;
-        std::fs::write(&lock_path, generated.to_string()?).context("Failed to write Beru.lock")?;
+        let generated = beru_resolve::resolve_graph(manifest, cache, project_dir, beru_exe)?;
+        beru_core::fs::write_str_if_changed(&lock_path, &generated.to_string()?)
+            .context("Failed to write Beru.lock")?;
         generated
     };
 
-    if !lockfile.packages.is_empty() {
-        println!("{} dependencies...", style("Building").cyan().bold(),);
+    if print_deps_banner && !lockfile.packages.is_empty() {
+        println!("{} dependencies...", style("Building").cyan().bold());
     }
 
-    let (prefix_paths, cmake_deps) = prepare_locked_dependencies(
-        &lockfile,
-        &manifest,
-        &cache,
-        &abi_hash,
-        project_dir,
-        &args.profile,
-    )?;
+    let (prefix_paths, cmake_deps) =
+        prepare_locked_dependencies(&lockfile, manifest, cache, &abi_hash, project_dir, profile)?;
 
-    let profile_cfg = manifest.profile.get(&args.profile);
+    let profile_cfg = manifest.profile.get(profile);
     let opt_str = profile_cfg.and_then(|p| p.optimization.as_ref().map(|o| o.to_string()));
     let warnings = profile_cfg.and_then(|p| p.warnings.as_deref());
     let lto = profile_cfg.map(|p| p.lto).unwrap_or(false);
@@ -214,30 +244,13 @@ pub fn exec_in_dir(project_dir: &Path, args: BuildArgs) -> Result<()> {
     generate_toolchain_cmake_with_config(
         &toolchain_path,
         &manifest.package.cxx_std,
-        &args.profile,
+        profile,
         &prefix_refs,
         &cmake_deps,
         &toolchain_config,
     )?;
 
-    let build_dir = project_dir.join("build");
-    println!("{} project...", style("Compiling").green().bold(),);
-    build_project(
-        project_dir,
-        &build_dir,
-        &toolchain_path,
-        &args.profile,
-        Some(resolved_target_name.as_str()),
-        &[],
-    )?;
-
-    println!(
-        "  {} {} built successfully",
-        style("Finished").green().bold(),
-        resolved_target_name,
-    );
-
-    Ok(())
+    Ok(toolchain_path)
 }
 
 /// Resolve the correct target executable file from the src/ directory.

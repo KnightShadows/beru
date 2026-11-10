@@ -64,7 +64,7 @@ impl AbiProfile {
         }
 
         let result = hasher.finalize();
-        hex_encode(&result[..16])
+        crate::fs::hex_encode(&result[..16])
     }
 
     /// Compute a header-only cache key (no compiler/arch component).
@@ -82,7 +82,7 @@ impl AbiProfile {
             hasher.update(b",");
         }
         let result = hasher.finalize();
-        hex_encode(&result[..16])
+        crate::fs::hex_encode(&result[..16])
     }
 }
 
@@ -100,11 +100,6 @@ impl fmt::Display for AbiProfile {
             self.cxx_std
         )
     }
-}
-
-/// Encode bytes as lowercase hex.
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use beru_recipe::{Recipe, RecipePackage};
 use clap::Args;
 use console::style;
 use std::collections::BTreeMap;
@@ -26,15 +27,19 @@ struct SearchEntry {
 
 /// Execute the `beru search` command.
 pub fn exec(args: SearchArgs) -> Result<()> {
-    let query_lower = args.query.to_lowercase();
+    let query_lower = if args.query.is_ascii() {
+        String::new()
+    } else {
+        args.query.to_lowercase()
+    };
     let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
     let mut catalog: BTreeMap<String, SearchEntry> = BTreeMap::new();
 
     // 1. Ingest embedded recipes
     for (name, content) in beru_recipe::EMBEDDED_RECIPES {
-        if let Ok(recipe) = beru_recipe::Recipe::parse_toml(content) {
-            record_recipe(&mut catalog, &recipe);
+        if let Ok(pkg) = Recipe::parse_package_metadata(content) {
+            record_stub(&mut catalog, pkg);
         } else {
             catalog.insert(
                 (*name).to_string(),
@@ -64,19 +69,17 @@ pub fn exec(args: SearchArgs) -> Result<()> {
     let local_recipes = current_dir.join("recipes");
     scan_recipes_dir(&local_recipes, &mut catalog);
 
-    // Filter by query
     let mut matches: Vec<&SearchEntry> = catalog
         .values()
         .filter(|entry| {
-            entry.name.to_lowercase().contains(&query_lower)
-                || entry.description.to_lowercase().contains(&query_lower)
+            contains_case_insensitive(&entry.name, &args.query, &query_lower)
+                || contains_case_insensitive(&entry.description, &args.query, &query_lower)
         })
         .collect();
 
-    // Sort by name match first, then alphabetically
     matches.sort_by(|a, b| {
-        let a_exact = a.name.to_lowercase() == query_lower;
-        let b_exact = b.name.to_lowercase() == query_lower;
+        let a_exact = equals_case_insensitive(&a.name, &args.query, &query_lower);
+        let b_exact = equals_case_insensitive(&b.name, &args.query, &query_lower);
         match (a_exact, b_exact) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
@@ -173,27 +176,44 @@ pub fn exec(args: SearchArgs) -> Result<()> {
     Ok(())
 }
 
-fn record_recipe(catalog: &mut BTreeMap<String, SearchEntry>, recipe: &beru_recipe::Recipe) {
-    let name = recipe.package.name.clone();
-    let ver = recipe.package.version.clone();
-    let pkg_type = recipe.package.package_type.clone();
-    let desc = recipe.package.description.clone().unwrap_or_default();
+fn contains_case_insensitive(haystack: &str, query: &str, query_unicode_lower: &str) -> bool {
+    if query.is_ascii() && haystack.is_ascii() {
+        beru_core::fs::contains_ascii_case_insensitive(haystack.as_bytes(), query.as_bytes())
+    } else if query_unicode_lower.is_empty() {
+        haystack.to_lowercase().contains(&query.to_lowercase())
+    } else {
+        haystack.to_lowercase().contains(query_unicode_lower)
+    }
+}
 
-    if let Some(existing) = catalog.get_mut(&name) {
-        if is_version_newer(&ver, &existing.latest_version) {
-            existing.latest_version = ver;
+fn equals_case_insensitive(text: &str, query: &str, query_unicode_lower: &str) -> bool {
+    if query.is_ascii() && text.is_ascii() {
+        text.eq_ignore_ascii_case(query)
+    } else if query_unicode_lower.is_empty() {
+        text.to_lowercase() == query.to_lowercase()
+    } else {
+        text.to_lowercase() == query_unicode_lower
+    }
+}
+
+fn record_stub(catalog: &mut BTreeMap<String, SearchEntry>, pkg: RecipePackage) {
+    let desc = pkg.description.unwrap_or_default();
+
+    if let Some(existing) = catalog.get_mut(&pkg.name) {
+        if is_version_newer(&pkg.version, &existing.latest_version) {
+            existing.latest_version = pkg.version;
             if !desc.is_empty() {
                 existing.description = desc;
             }
-            existing.package_type = pkg_type;
+            existing.package_type = pkg.package_type;
         }
     } else {
         catalog.insert(
-            name.clone(),
+            pkg.name.clone(),
             SearchEntry {
-                name,
-                latest_version: ver,
-                package_type: pkg_type,
+                name: pkg.name,
+                latest_version: pkg.version,
+                package_type: pkg.package_type,
                 description: desc,
             },
         );
@@ -206,63 +226,100 @@ fn is_version_newer(new_ver: &str, old_ver: &str) -> bool {
 
 fn parse_semver(s: &str) -> (u64, u64, u64) {
     let clean = s.trim_start_matches('v');
-    let parts: Vec<&str> = clean.split('.').collect();
-    let major = parts.first().and_then(|p| p.parse().ok()).unwrap_or(0);
-    let minor = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(0);
+    let mut parts = clean.split('.');
+    let major = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    let minor = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
     let patch = parts
-        .get(2)
+        .next()
         .and_then(|p| p.split('-').next().unwrap_or("0").parse().ok())
         .unwrap_or(0);
     (major, minor, patch)
 }
 
 fn scan_recipes_dir(dir: &Path, catalog: &mut BTreeMap<String, SearchEntry>) {
-    if !dir.exists() {
+    let Ok(entries) = fs::read_dir(dir) else {
         return;
-    }
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p.is_dir() {
-                let recipe_file = p.join("recipe.toml");
-                if recipe_file.exists()
-                    && let Ok(recipe) = beru_recipe::Recipe::from_file(&recipe_file)
-                {
-                    record_recipe(catalog, &recipe);
-                }
-            }
+    };
+    for entry in entries.flatten() {
+        if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
+            continue;
+        }
+        let recipe_file = entry.path().join("recipe.toml");
+        if let Ok(meta) = Recipe::read_package_metadata(&recipe_file) {
+            record_stub(catalog, meta);
         }
     }
 }
 
 fn scan_index_dir(dir: &Path, catalog: &mut BTreeMap<String, SearchEntry>) {
-    if !dir.exists() {
+    let Ok(pkg_entries) = fs::read_dir(dir) else {
         return;
-    }
-    if let Ok(pkg_entries) = fs::read_dir(dir) {
-        for pkg_entry in pkg_entries.flatten() {
-            let pkg_dir = pkg_entry.path();
-            if !pkg_dir.is_dir() {
-                continue;
-            }
-            let pkg_name = pkg_entry.file_name().to_string_lossy().to_string();
-            if pkg_name.starts_with('.') {
-                continue;
-            }
+    };
+    for pkg_entry in pkg_entries.flatten() {
+        if !pkg_entry.file_type().is_ok_and(|ft| ft.is_dir()) {
+            continue;
+        }
+        let pkg_name_os = pkg_entry.file_name();
+        if pkg_name_os.to_string_lossy().starts_with('.') {
+            continue;
+        }
 
-            if let Ok(ver_entries) = fs::read_dir(&pkg_dir) {
-                for ver_entry in ver_entries.flatten() {
-                    let ver_dir = ver_entry.path();
-                    if ver_dir.is_dir() {
-                        let recipe_file = ver_dir.join("recipe.toml");
-                        if recipe_file.exists()
-                            && let Ok(recipe) = beru_recipe::Recipe::from_file(&recipe_file)
-                        {
-                            record_recipe(catalog, &recipe);
-                        }
-                    }
-                }
+        let Ok(ver_entries) = fs::read_dir(pkg_entry.path()) else {
+            continue;
+        };
+
+        // Check only the newest versions first instead of parsing every historical recipe.toml.
+        let mut versions: Vec<((u64, u64, u64), std::path::PathBuf)> = ver_entries
+            .flatten()
+            .filter(|e| e.file_type().is_ok_and(|ft| ft.is_dir()))
+            .map(|e| {
+                let ver_name = e.file_name();
+                let semver = parse_semver(&ver_name.to_string_lossy());
+                (semver, e.path())
+            })
+            .collect();
+
+        versions.sort_unstable_by_key(|a| std::cmp::Reverse(a.0));
+
+        for (_, ver_dir) in versions {
+            let recipe_file = ver_dir.join("recipe.toml");
+            if let Ok(meta) = Recipe::read_package_metadata(&recipe_file) {
+                record_stub(catalog, meta);
+                break;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scan_index_dir_picks_latest_version_first() {
+        let dir = tempfile::tempdir().unwrap();
+        for (ver, desc) in [("1.0.0", "old"), ("2.5.1", "latest"), ("1.9.0", "mid")] {
+            let ver_dir = dir.path().join("coolpkg").join(ver);
+            fs::create_dir_all(&ver_dir).unwrap();
+            fs::write(
+                ver_dir.join("recipe.toml"),
+                format!(
+                    "[package]\nname = \"coolpkg\"\nversion = \"{ver}\"\ndescription = \"{desc}\"\n[source]\nurl = \"https://example.com/a.tar.gz\"\n"
+                ),
+            )
+            .unwrap();
+        }
+
+        let mut catalog = BTreeMap::new();
+        scan_index_dir(dir.path(), &mut catalog);
+        let entry = catalog.get("coolpkg").unwrap();
+        assert_eq!(entry.latest_version, "2.5.1");
+        assert_eq!(entry.description, "latest");
+    }
+
+    #[test]
+    fn test_contains_case_insensitive() {
+        assert!(contains_case_insensitive("Nlohmann_JSON", "json", ""));
+        assert!(!contains_case_insensitive("fmt", "spdlog", ""));
     }
 }

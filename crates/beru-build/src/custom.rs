@@ -27,7 +27,8 @@ pub fn build_dependency_custom(
 
         debug!("running custom command: {}", expanded);
 
-        let sh = which::which("sh").context("sh not found on PATH for custom build")?;
+        let sh =
+            beru_core::fs::which_cached("sh").context("sh not found on PATH for custom build")?;
 
         let output = Command::new(&sh)
             .arg("-c")

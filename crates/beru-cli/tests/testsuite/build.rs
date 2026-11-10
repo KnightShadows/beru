@@ -131,3 +131,106 @@ fn test_beru_build_header_only_nested_include_and_mismatched_cmake_package() {
         .stderr(predicate::str::contains("Manually-specified variables were not used").not())
         .stdout(predicate::str::contains("built successfully"));
 }
+
+#[test]
+fn test_beru_build_multiple_dependencies_cold_and_cached() {
+    let p = project("multi-dep-app")
+        .file(
+            "../dep-a/Beru.toml",
+            r#"
+            [package]
+            name = "dep-a"
+            version = "1.0.0"
+            type = "header-only"
+            "#,
+        )
+        .file(
+            "../dep-a/CMakeLists.txt",
+            r#"
+            cmake_minimum_required(VERSION 3.20)
+            project(dep-a LANGUAGES NONE)
+            install(DIRECTORY include/ DESTINATION include)
+            "#,
+        )
+        .file(
+            "../dep-a/include/dep_a/val.hpp",
+            r#"#pragma once
+            inline int val_a() { return 19; }
+            "#,
+        )
+        .file(
+            "../dep-b/Beru.toml",
+            r#"
+            [package]
+            name = "dep-b"
+            version = "1.0.0"
+            type = "header-only"
+            "#,
+        )
+        .file(
+            "../dep-b/CMakeLists.txt",
+            r#"
+            cmake_minimum_required(VERSION 3.20)
+            project(dep-b LANGUAGES NONE)
+            install(DIRECTORY include/ DESTINATION include)
+            "#,
+        )
+        .file(
+            "../dep-b/include/dep_b/val.hpp",
+            r#"#pragma once
+            inline int val_b() { return 23; }
+            "#,
+        )
+        .file(
+            "Beru.toml",
+            r#"
+            [package]
+            name = "multi-dep-app"
+            version = "0.1.0"
+            cxx-std = "c++17"
+            type = "executable"
+
+            [dependencies]
+            dep-a = { path = "../dep-a" }
+            dep-b = { path = "../dep-b" }
+            "#,
+        )
+        .file(
+            "CMakeLists.txt",
+            r#"
+            cmake_minimum_required(VERSION 3.20)
+            project(multi-dep-app LANGUAGES CXX)
+            add_executable(multi-dep-app src/main.cpp)
+            if(COMMAND beru_link_dependencies)
+                beru_link_dependencies(multi-dep-app)
+            endif()
+            "#,
+        )
+        .file(
+            "src/main.cpp",
+            r#"
+            #include <iostream>
+            #include <dep_a/val.hpp>
+            #include <dep_b/val.hpp>
+            int main() {
+                std::cout << "sum=" << (val_a() + val_b()) << "\n";
+                return 0;
+            }
+            "#,
+        )
+        .build();
+
+    // Cold run builds both dependencies into cache and runs executable
+    p.beru("run")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("sum=42"));
+
+    // Subsequent build hits cache for both dependencies and inspects in parallel
+    p.beru("build")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("dep-a (1.0.0) — cached"))
+        .stdout(predicate::str::contains("dep-b (1.0.0) — cached"))
+        .stdout(predicate::str::contains("built successfully"));
+}

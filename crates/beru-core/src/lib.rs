@@ -15,5 +15,7 @@
 pub mod abi;
 /// Global cache and directory management.
 pub mod cache;
+/// Filesystem and byte-level utility helpers.
+pub mod fs;
 /// Compiler toolchain detection.
 pub mod toolchain;

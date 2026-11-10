@@ -21,6 +21,7 @@ pub struct FmtArgs {
 }
 
 const CXX_EXTENSIONS: &[&str] = &["cpp", "hpp", "cc", "cxx", "h", "c", "hxx", "ixx"];
+const MAX_CMD_ARG_BYTES: usize = 16_000;
 
 /// Execute the `beru fmt` command.
 pub fn exec(args: FmtArgs) -> Result<()> {
@@ -69,7 +70,6 @@ pub fn exec(args: FmtArgs) -> Result<()> {
         collect_cxx_files(dir, &mut files)?;
     }
 
-    // Deduplicate files
     files.sort();
     files.dedup();
 
@@ -81,6 +81,8 @@ pub fn exec(args: FmtArgs) -> Result<()> {
         return Ok(());
     }
 
+    let batches = chunk_files_by_cmd_len(&files, MAX_CMD_ARG_BYTES);
+
     if args.check {
         println!(
             "{} Checking formatting for {} C++ file(s)...",
@@ -90,25 +92,44 @@ pub fn exec(args: FmtArgs) -> Result<()> {
 
         let mut unformatted = Vec::new();
 
-        for file in &files {
+        for batch in batches {
             let status = Command::new(&clang_format)
                 .arg("--dry-run")
                 .arg("--Werror")
-                .arg(file)
+                .args(batch)
                 .output()
-                .with_context(|| format!("failed to check formatting of {}", file.display()))?;
+                .context("failed to run clang-format --dry-run")?;
 
-            if !status.status.success() {
-                unformatted.push(file.clone());
+            if status.status.success() {
                 if args.verbose {
-                    eprintln!(
-                        "  {} Needs formatting: {}",
-                        style("FAIL").red().bold(),
-                        file.display()
-                    );
+                    for file in batch {
+                        println!("  {} Formatted: {}", style("OK").green(), file.display());
+                    }
                 }
-            } else if args.verbose {
-                println!("  {} Formatted: {}", style("OK").green(), file.display());
+                continue;
+            }
+
+            // Batch contained unformatted file(s); isolate exact offenders per file.
+            for file in batch {
+                let single = Command::new(&clang_format)
+                    .arg("--dry-run")
+                    .arg("--Werror")
+                    .arg(file)
+                    .output()
+                    .with_context(|| format!("failed to check formatting of {}", file.display()))?;
+
+                if !single.status.success() {
+                    unformatted.push(file.clone());
+                    if args.verbose {
+                        eprintln!(
+                            "  {} Needs formatting: {}",
+                            style("FAIL").red().bold(),
+                            file.display()
+                        );
+                    }
+                } else if args.verbose {
+                    println!("  {} Formatted: {}", style("OK").green(), file.display());
+                }
             }
         }
 
@@ -144,24 +165,43 @@ pub fn exec(args: FmtArgs) -> Result<()> {
 
     let mut modified_count = 0;
 
-    for file in &files {
+    for batch in batches {
         let status = Command::new(&clang_format)
             .arg("-i")
-            .arg(file)
+            .args(batch)
             .status()
-            .with_context(|| format!("failed to format {}", file.display()))?;
+            .context("failed to run clang-format -i")?;
 
         if status.success() {
-            modified_count += 1;
+            modified_count += batch.len();
             if args.verbose {
-                println!("  {} {}", style("Formatted").green(), file.display());
+                for file in batch {
+                    println!("  {} {}", style("Formatted").green(), file.display());
+                }
             }
-        } else {
-            eprintln!(
-                "  {} Failed to format: {}",
-                style("WARN").yellow().bold(),
-                file.display()
-            );
+            continue;
+        }
+
+        // Fall back to per-file formatting only if a batch failed.
+        for file in batch {
+            let single = Command::new(&clang_format)
+                .arg("-i")
+                .arg(file)
+                .status()
+                .with_context(|| format!("failed to format {}", file.display()))?;
+
+            if single.success() {
+                modified_count += 1;
+                if args.verbose {
+                    println!("  {} {}", style("Formatted").green(), file.display());
+                }
+            } else {
+                eprintln!(
+                    "  {} Failed to format: {}",
+                    style("WARN").yellow().bold(),
+                    file.display()
+                );
+            }
         }
     }
 
@@ -174,38 +214,90 @@ pub fn exec(args: FmtArgs) -> Result<()> {
     Ok(())
 }
 
-fn collect_cxx_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
-    if !dir.exists() {
-        return Ok(());
+/// Partition file paths into argument batches bounded cleanly under OS command-line limits.
+fn chunk_files_by_cmd_len(files: &[PathBuf], max_bytes: usize) -> Vec<&[PathBuf]> {
+    let mut batches = Vec::new();
+    let mut start = 0;
+    let mut cur_bytes = 0;
+
+    for (idx, path) in files.iter().enumerate() {
+        let len = path.as_os_str().len() + 3;
+        if idx > start && cur_bytes + len > max_bytes {
+            batches.push(&files[start..idx]);
+            start = idx;
+            cur_bytes = 0;
+        }
+        cur_bytes += len;
     }
 
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return Ok(()),
+    if start < files.len() {
+        batches.push(&files[start..]);
+    }
+
+    batches
+}
+
+fn is_cxx_extension(ext: &str) -> bool {
+    CXX_EXTENSIONS
+        .iter()
+        .any(|candidate| ext.eq_ignore_ascii_case(candidate))
+}
+
+fn collect_cxx_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Ok(());
     };
 
     for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().to_string();
-
-        if path.is_dir() {
-            if name.starts_with('.')
-                || name == "build"
-                || name == "_beru_build"
-                || name == "target"
-                || name == "recipes"
-                || name == "vendor"
-                || name == "node_modules"
+        let Ok(ft) = entry.file_type() else {
+            continue;
+        };
+        if ft.is_dir() {
+            let name = entry.file_name();
+            let Some(name_str) = name.to_str() else {
+                continue;
+            };
+            if name_str.starts_with('.')
+                || matches!(
+                    name_str,
+                    "build" | "_beru_build" | "target" | "recipes" | "vendor" | "node_modules"
+                )
             {
                 continue;
             }
-            collect_cxx_files(&path, files)?;
-        } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
-            && CXX_EXTENSIONS.contains(&ext.to_lowercase().as_str())
-        {
-            files.push(path);
+            collect_cxx_files(&entry.path(), files)?;
+        } else if ft.is_file() {
+            let path = entry.path();
+            if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                && is_cxx_extension(ext)
+            {
+                files.push(path);
+            }
         }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_chunk_files_by_cmd_len() {
+        let files: Vec<PathBuf> = (0..5)
+            .map(|i| PathBuf::from(format!("src/file_{i}.cpp")))
+            .collect();
+        let batches = chunk_files_by_cmd_len(&files, 36);
+        assert!(batches.len() >= 2);
+        let flattened: Vec<&PathBuf> = batches.into_iter().flatten().collect();
+        assert_eq!(flattened.len(), 5);
+    }
+
+    #[test]
+    fn test_is_cxx_extension_case_insensitive() {
+        assert!(is_cxx_extension("cpp"));
+        assert!(is_cxx_extension("HPP"));
+        assert!(!is_cxx_extension("rs"));
+    }
 }

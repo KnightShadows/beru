@@ -27,7 +27,8 @@ pub fn exec(args: ResolveArgs) -> Result<()> {
     let lockfile = beru_resolve::resolve_graph(&manifest, &cache, &project_dir, beru_exe)?;
 
     let lock_path = project_dir.join("Beru.lock");
-    std::fs::write(&lock_path, lockfile.to_string()?).context("Failed to write Beru.lock")?;
+    beru_core::fs::write_str_if_changed(&lock_path, &lockfile.to_string()?)
+        .context("Failed to write Beru.lock")?;
 
     info!(
         "Successfully wrote Beru.lock with {} dependencies locked",

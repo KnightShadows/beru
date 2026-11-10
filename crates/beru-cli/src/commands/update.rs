@@ -94,7 +94,8 @@ pub fn exec(args: UpdateArgs) -> Result<()> {
         }
     }
 
-    std::fs::write(&lock_path, new_lock.to_string()?).context("failed to write Beru.lock")?;
+    beru_core::fs::write_str_if_changed(&lock_path, &new_lock.to_string()?)
+        .context("failed to write Beru.lock")?;
 
     Ok(())
 }

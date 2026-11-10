@@ -36,6 +36,9 @@ pub struct BeruProvider<'a> {
 
     /// Available versions for a given package name.
     pub available_versions: RefCell<HashMap<String, Vec<SemanticVersion>>>,
+
+    /// Caches parsed recipes discovered during dependency resolution to avoid double-reading TOML files.
+    pub recipes_cache: RefCell<HashMap<(String, SemanticVersion), beru_recipe::Recipe>>,
 }
 
 impl<'a> BeruProvider<'a> {
@@ -48,6 +51,7 @@ impl<'a> BeruProvider<'a> {
             sources: RefCell::new(HashMap::new()),
             deps_cache: RefCell::new(HashMap::new()),
             available_versions: RefCell::new(HashMap::new()),
+            recipes_cache: RefCell::new(HashMap::new()),
         }
     }
 
@@ -274,6 +278,7 @@ impl<'a> DependencyProvider for BeruProvider<'a> {
                 let range = parse_recipe_dep_range(dep_name, dep_value);
                 deps_map.insert(dep_name.clone(), range);
             }
+            self.recipes_cache.borrow_mut().insert(key.clone(), r);
         }
 
         let deps = pubgrub::Dependencies::Available(deps_map.into_iter().collect());
